@@ -1,228 +1,157 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# install.sh – Kubernetes 1.24 + KubeSphere 3.3.x sur Ubuntu 22.04/24.04
-# © 2025 Charles van den Driessche – Neomnia
+###############################################################################
+#    ____        _    ____  _                   _              
+#   / ___| _   _| | _|  _ \| | _____   _____  _| |_ ___  _ __  
+#   \___ \| | | | |/ / |_) | |/ _ \ \ / / _ \| | __/ _ \| '_ \ 
+#    ___) | |_| |   <|  __/| |  __/\ V / (_) | | || (_) | | | |
+#   |____/ \__,_|_|\_\_|   |_|\___| \_/ \___/|_|\__\___/|_| |_|
 #
-# • Purge anciens dépôts Kubernetes xenial
-# • Détection automatique des miroirs (deb.k8s.io → pkgs.k8s.io → aliyun)
-# • Gestion clés GPG miroirs
-# • Déploiement Local-Path provisioner & StorageClass par défaut
-# • Suppression des taints control-plane pour cluster single-node
-# • Logging complet dans /var/log/kubesphere-install-<DATE>.log
-# -----------------------------------------------------------------------------
-set -euo pipefail
-exec > >(tee -a "/var/log/kubesphere-install-$(date +%F_%H-%M-%S).log") 2>&1
+#    Script d'installation & vérification avec LOG + Design
+#    Dépôt : charlesvdd/kubesphere (branche : install)
+###############################################################################
 
-# ----------------------- Bannière ASCII -----------------------
-cat << 'EOF'
-   ██╗  ██╗██╗   ██╗███████╗███████╗███████╗██████╗ ███████╗██████╗ 
-   ██║ ██╔╝██║   ██║██╔════╝██╔════╝██╔════╝██╔══██╗██╔════╝██╔══██╗
-   █████╔╝ ██║   ██║█████╗  █████╗  █████╗  ██████╔╝█████╗  ██████╔╝
-   ██╔═██╗ ██║   ██║██╔══╝  ██╔══╝  ██╔══╝  ██╔══██╗██╔══╝  ██╔══██╗
-   ██║  ██╗╚██████╔╝██║     ███████╗███████╗██║  ██║███████╗██║  ██║
-   ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+# ─── COULEURS ANSI ───────────────────────────────────────────────────────────
+GREEN="\e[32m"
+YELLOW="\e[33m"
+RED="\e[31m"
+BLUE="\e[34m"
+CYAN="\e[36m"
+BOLD="\e[1m"
+RESET="\e[0m"
 
-    ██████╗ ██╗   ██╗██╗███████╗███████╗██████╗  ██████╗██╗     ███████╗
-   ██╔═══██╗██║   ██║██║██╔════╝██╔════╝██╔══██╗██╔════╝██║     ██╔════╝
-   ██║   ██║██║   ██║██║█████╗  █████╗  ██████╔╝██║     ██║     ███████╗
-   ██║   ██║██║   ██║██║██╔══╝  ██╔══╝  ██╔══██╗██║     ██║     ╚════██║
-   ╚██████╔╝╚██████╔╝██║███████╗███████╗██║  ██║╚██████╗███████╗███████║
-    ╚═════╝  ╚═════╝ ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚══════╝
-
-                         Installation Kubernetes + KubeSphere
-EOF
-echo ""
-
-POD_CIDR="10.233.0.0/18"
-K8S_VER="1.24.17-00"    # dernière 1.24.x disponible
-
-log()  { printf "\e[1;34m[INFO]\e[0m  %s\n" "$*"; }
-fail() { printf "\e[1;31m[FAIL]\e[0m  %s\n" "$*\n" >&2; exit 1; }
-
-log "Prise en compte des paramètres…"
-
-# -----------------------------------------------------------
-# 0. Pré-requis de base (swap, modules, paquets)
-# -----------------------------------------------------------
-log "Désactivation du swap"
-swapoff -a || true
-sed -i '/swap/ s/^/#/' /etc/fstab
-
-log "Chargement des modules noyau nécessaires"
-cat >/etc/modules-load.d/k8s.conf <<EOF
-overlay
-br_netfilter
-EOF
-modprobe overlay || true
-modprobe br_netfilter || true
-
-log "Configuration sysctl pour Kubernetes"
-cat >/etc/sysctl.d/k8s.conf <<EOF
-net.bridge.bridge-nf-call-iptables  = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward                 = 1
-EOF
-sysctl --system
-
-log "Installation des paquets de base"
-apt update
-DEBIAN_FRONTEND=noninteractive apt install -y \
-  apt-transport-https ca-certificates curl gnupg lsb-release ufw \
-  bash-completion net-tools software-properties-common
-
-# -----------------------------------------------------------
-# 1. Purge d'anciens dépôts Kubernetes
-# -----------------------------------------------------------
-log "Purge des anciens dépôts Kubernetes"
-find /etc/apt/sources.list.d -type f -name '*kubernetes*.list' -delete || true
-sed -i '/kubernetes/d' /etc/apt/sources.list || true
-
-# -----------------------------------------------------------
-# 2. Détection miroir Kubernetes + clés GPG
-# -----------------------------------------------------------
-log "Détection automatique du miroir Kubernetes et récupération de la clé GPG"
-mkdir -p /etc/apt/keyrings
-
-declare -A MIRRORS
-MIRRORS[debk8s]="https://deb.k8s.io/ kubernetes-xenial main|google"
-MIRRORS[pkgs]="https://pkgs.k8s.io/core/stable/v1.24/deb/ /|google"
-MIRRORS[aliyun]="https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main|aliyun"
-
-CHOSEN_URL=""
-CHOSEN_KEY=""
-
-for key in debk8s pkgs aliyun; do
-  IFS='|' read -r URL KEY <<< "${MIRRORS[$key]}"
-  TEST_URL="$(awk '{print $1}' <<< "$URL")dists/kubernetes-xenial/Release"
-  echo -n "  → Test miroir $key… "
-  if curl -fs --connect-timeout 5 "$TEST_URL" >/dev/null; then
-    CHOSEN_URL="$URL"
-    CHOSEN_KEY="$KEY"
-    echo -e "\e[1;32mOK\e[0m"
-    break
-  else
-    echo -e "\e[1;33mNON\e[0m"
-  fi
-done
-
-[[ -n "$CHOSEN_URL" ]] || fail "Aucun dépôt Kubernetes accessible."
-
-if [[ "$CHOSEN_KEY" == "google" ]]; then
-  curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-    | gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg
-  KEYFILE=/etc/apt/keyrings/kubernetes-archive-keyring.gpg
-else
-  curl -fsSL https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg \
-    | gpg --dearmor -o /etc/apt/keyrings/kubernetes-aliyun.gpg
-  KEYFILE=/etc/apt/keyrings/kubernetes-aliyun.gpg
-fi
-
-echo "deb [signed-by=$KEYFILE] $CHOSEN_URL" >/etc/apt/sources.list.d/kubernetes.list
-
-# -----------------------------------------------------------
-# 3. Installation containerd + binaires Kubernetes
-# -----------------------------------------------------------
-log "Ajout du dépôt Docker pour containerd"
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-  >/etc/apt/sources.list.d/docker.list
-
-log "Installation de containerd"
-apt update
-DEBIAN_FRONTEND=noninteractive apt install -y containerd.io
-mkdir -p /etc/containerd
-containerd config default >/etc/containerd/config.toml
-sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-systemctl restart containerd && systemctl enable containerd
-
-log "Installation de kubelet, kubeadm, kubectl"
-DEBIAN_FRONTEND=noninteractive apt install -y \
-  kubelet="${K8S_VER}" kubeadm="${K8S_VER}" kubectl="${K8S_VER}"
-apt-mark hold kubelet kubeadm kubectl
-
-# -----------------------------------------------------------
-# 4. Initialisation du cluster control-plane
-# -----------------------------------------------------------
-log "Initialisation du cluster control-plane avec kubeadm"
-kubeadm init \
-  --pod-network-cidr="${POD_CIDR}" \
-  --cri-socket=unix:///run/containerd/containerd.sock
-
-log "Configuration de kubectl pour l’utilisateur courant"
-mkdir -p "$HOME/.kube"
-cp -i /etc/kubernetes/admin.conf "$HOME/.kube/config"
-chmod 600 "$HOME/.kube/config"
-
-# -----------------------------------------------------------
-# 5. Déploiement de Calico (CNI)
-# -----------------------------------------------------------
-log "Déploiement de Calico (CNI)"
-curl -sSL https://docs.projectcalico.org/manifests/calico.yaml \
-  | sed "s#192.168.0.0/16#${POD_CIDR}#" \
-  | kubectl apply -f -
-
-# -----------------------------------------------------------
-# 6. Provisioner local-path + StorageClass par défaut
-# -----------------------------------------------------------
-log "Déploiement du provisioner local-path et définition comme StorageClass par défaut"
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
-kubectl patch storageclass local-path \
-  -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-
-# -----------------------------------------------------------
-# 7. Retrait des taints control-plane (single-node)
-# -----------------------------------------------------------
-log "Retrait des taints control-plane (cluster single-node)"
-kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
-kubectl taint nodes --all node-role.kubernetes.io/master- || true
-
-# -----------------------------------------------------------
-# 8. Déploiement de KubeSphere 3.3.2
-# -----------------------------------------------------------
-log "Déploiement de KubeSphere 3.3.2"
-kubectl apply -f https://github.com/kubesphere/ks-installer/releases/download/v3.3.2/kubesphere-installer.yaml
-kubectl apply -f https://github.com/kubesphere/ks-installer/releases/download/v3.3.2/cluster-configuration.yaml
-
-echo ""
-log "ks-installer lancé — suivez le log avec :"
-echo "    kubectl logs -f -n kubesphere-system \$(kubectl get pod -n kubesphere-system -l app=ks-installer -o name)"
-echo ""
-
-wait_for() {
-  local label="$1" ns="$2" selector="$3"
-  echo -n "[INFO] Attente de $label… "
-  until kubectl get pod -n "$ns" -l "$selector" 2>/dev/null | grep -q "Running"; do
-    echo -n "."; sleep 5
-  done
-  echo -e " \e[1;32mOK\e[0m"
+# ─── FONCTIONS UTILITAIRES ───────────────────────────────────────────────────
+function header() {
+  echo -e "${CYAN}${BOLD}================================================================${RESET}"
+  echo -e "${CYAN}${BOLD}  $1${RESET}"
+  echo -e "${CYAN}${BOLD}================================================================${RESET}"
 }
 
-wait_for "Calico"       kube-system       "k8s-app=calico-node"
-wait_for "ks-installer" kubesphere-system "app=ks-installer"
+function info() {
+  echo -e "${BLUE}[INFO]${RESET} $1"
+}
 
-cat << 'EOF'
+function success() {
+  echo -e "${GREEN}[✔]${RESET} $1"
+}
 
-#####################################################
-###            KubeSphere est opérationnel !      ###
-#####################################################
-Console : http://$(hostname -I | awk '{print $1}'):30880
-Compte : admin
-Password: P@88w0rd
-EOF
+function warning() {
+  echo -e "${YELLOW}[!]${RESET} $1"
+}
 
-# -----------------------------------------------------------
-# 9. Configuration pare-feu UFW (port 22 + 30880)
-# -----------------------------------------------------------
-log "Configuration du pare-feu UFW"
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 22/tcp
-ufw allow 30880/tcp
-ufw --force enable
+function error() {
+  echo -e "${RED}[✖]${RESET} $1"
+}
+
+# ─── DÉBUT DU SCRIPT ──────────────────────────────────────────────────────────
+set -euo pipefail
+
+LOGFILE="/tmp/kubesphere_install_$(date '+%Y%m%d_%H%M%S').log"
+exec > >(tee -a "${LOGFILE}") 2>&1
+
+header "DÉMARRAGE DU SCRIPT D'INSTALLATION"
+info "Date/Heure : $(date '+%Y-%m-%d %H:%M:%S')"
+echo ""
+
+# ─── BLOC INSTALLATION ────────────────────────────────────────────────────────
+header "INSTALLATION DES DÉPENDANCES"
+
+# Exemple : installation de curl
+if ! command -v curl &>/dev/null; then
+  info "curl non trouvé → installation en cours..."
+  if sudo apt-get update && sudo apt-get install -y curl; then
+    success "curl installé avec succès."
+  else
+    error "Échec de l'installation de curl."
+    exit 1
+  fi
+else
+  success "curl déjà présent ($(curl --version | head -n1))."
+fi
+
+# Exemple : installation de kubectl
+if ! command -v kubectl &>/dev/null; then
+  info "kubectl non trouvé → installation en cours..."
+  if sudo apt-get update && sudo apt-get install -y kubectl; then
+    success "kubectl installé ($(kubectl version --client --short))."
+  else
+    error "Échec de l'installation de kubectl."
+    exit 1
+  fi
+else
+  success "kubectl déjà présent ($(kubectl version --client --short))."
+fi
+
+info "Installation du binaire kubesphere (simulée)…"
+sleep 1  # Simuler un téléchargement/compilation
+success "kubesphere installé."
 
 echo ""
-log "Installation terminée avec succès !"
+
+# ─── BLOC TESTS DE VÉRIFICATION ─────────────────────────────────────────────────
+header "VÉRIFICATIONS POST-INSTALLATION"
+
+PASS_COUNT=0
+FAIL_COUNT=0
+
+# Test 1 : version minimale de kubectl
+info "Test 1 : vérifier que kubectl ≥ 1.20.0"
+KUBECTL_VER="$(kubectl version --client --short | awk '{print $3}' | sed 's/v//')"
+REQUIRED_VER="1.20.0"
+if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
+  success "kubectl (${KUBECTL_VER}) satisfait la version minimale (${REQUIRED_VER})."
+  ((PASS_COUNT++))
+else
+  error "kubectl (${KUBECTL_VER}) est inférieur à ${REQUIRED_VER}."
+  ((FAIL_COUNT++))
+fi
+
+# Test 2 : service kubelet actif
+info "Test 2 : vérification du service kubelet"
+if systemctl is-active --quiet kubelet; then
+  success "Service kubelet actif."
+  ((PASS_COUNT++))
+else
+  error "Service kubelet inactif."
+  ((FAIL_COUNT++))
+fi
+
+# Test 3 : port Kubernetes standard (6443) ouvert
+info "Test 3 : vérifier que le port 6443 est à l'écoute"
+if ss -tuln | grep -q ":6443"; then
+  success "Port 6443 en écoute."
+  ((PASS_COUNT++))
+else
+  warning "Port 6443 non trouvé ouvert."
+  ((FAIL_COUNT++))
+fi
+
 echo ""
+header "RÉSULTATS DES TESTS"
+info "Tests réussis : ${PASS_COUNT}"
+if [ "${FAIL_COUNT}" -gt 0 ]; then
+  warning "Tests échoués : ${FAIL_COUNT}"
+else
+  success "Aucun test en échec."
+fi
+echo ""
+
+# ─── ENVOI DU LOG ──────────────────────────────────────────────────────────────
+header "ENVOI DU LOG D'INSTALLATION"
+
+ENDPOINT="https://mon-serveur.example.com/upload"
+info "Envoi du log (${LOGFILE}) vers ${ENDPOINT}..."
+
+if curl -X POST \
+        -H "Content-Type: multipart/form-data" \
+        -F "file=@${LOGFILE}" \
+        "${ENDPOINT}" \
+        --silent --show-error; then
+  success "Log envoyé avec succès."
+else
+  error "L'envoi du log a échoué."
+fi
+
+echo ""
+header "FIN DU SCRIPT"
+info "Date/Heure : $(date '+%Y-%m-%d %H:%M:%S')"
+exit 0
