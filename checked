@@ -1,0 +1,35 @@
+sudo tee /var/scripts/precheck.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+exec > >(tee -a /var/log/kubesphere-precheck-$(date +%F_%H-%M-%S).log) 2>&1
+set -euo pipefail
+
+log()  { printf "\e[1;34m[CHECK]\e[0m %s\n" "$*"; }
+fail() { printf "\e[1;31m[FAIL]\e[0m  %s\n" "$*\n" >&2; exit 1; }
+
+log "Utilisateur = $(id -u)"
+[[ $(id -u) -eq 0 ]] || fail "Exécute le script en root."
+
+OS=$(lsb_release -is) ; VER=$(lsb_release -rs)
+log "OS = $OS $VER"
+[[ "$OS" = "Ubuntu" && "$VER" =~ ^(22|24)\\.04$ ]] \
+  || fail "Ubuntu 22.04 ou 24.04 requis."
+
+log "Swap désactivé"
+swapon --summary | grep -q . && fail "Swap encore actif."
+
+log "Modules noyau nécessaires"
+for m in overlay br_netfilter; do
+  lsmod | grep -q "^$m" || fail "Module noyau $m absent."
+done
+
+log "sysctl essentiels"
+for k in net.bridge.bridge-nf-call-iptables net.bridge.bridge-nf-call-ip6tables net.ipv4.ip_forward; do
+  sysctl -n "$k" | grep -qx 1 || fail "sysctl $k != 1"
+done
+
+log "Connectivité externe"
+curl -fs https://github.com >/dev/null || fail "Pas d'accès Internet sortant."
+
+echo -e "\e[1;32m✔ Pré-vol terminé : tout est OK.\e[0m"
+EOF
+sudo chmod 700 /var/scripts/precheck.sh
