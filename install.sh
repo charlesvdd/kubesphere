@@ -55,7 +55,7 @@ echo ""
 # ─── BLOC INSTALLATION ────────────────────────────────────────────────────────
 header "INSTALLATION DES DÉPENDANCES"
 
-# Exemple : installation de curl
+# Installation de curl
 if ! command -v curl &>/dev/null; then
   info "curl non trouvé → installation en cours..."
   if sudo apt-get update && sudo apt-get install -y curl; then
@@ -68,17 +68,32 @@ else
   success "curl déjà présent ($(curl --version | head -n1))."
 fi
 
-# Exemple : installation de kubectl
-if ! command -v kubectl &>/dev/null; then
-  info "kubectl non trouvé → installation en cours..."
-  if sudo apt-get update && sudo apt-get install -y kubectl; then
-    success "kubectl installé ($(kubectl version --client --short))."
+# Installation de kubectl (avec fallback manuel)
+info "kubectl non trouvé → tentative d’installation via APT (dépôt officiel)…"
+if ! grep -q "^deb .\+apt.kubernetes.io" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
+  info "Ajout du dépôt Kubernetes officiel dans APT."
+  sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl
+  sudo curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+  echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+else
+  info "Le dépôt Kubernetes est déjà présent."
+fi
+
+if sudo apt-get update && sudo apt-get install -y kubectl; then
+  success "kubectl installé via apt ($(kubectl version --client --short))."
+else
+  warning "Échec de l’installation via apt. Passage à l’installation manuelle du binaire."
+  KC_VERSION="v1.24.0"
+  info "Téléchargement du binaire kubectl ${KC_VERSION}…"
+  TMP_BIN="/tmp/kubectl"
+  if curl -fsSL "https://dl.k8s.io/release/${KC_VERSION}/bin/linux/amd64/kubectl" -o "${TMP_BIN}"; then
+    chmod +x "${TMP_BIN}"
+    sudo mv "${TMP_BIN}" /usr/local/bin/kubectl
+    success "kubectl ${KC_VERSION} installé manuellement (/usr/local/bin/kubectl)."
   else
-    error "Échec de l'installation de kubectl."
+    error "Impossible de télécharger kubectl ${KC_VERSION}. Vérifiez la connectivité ou la version."
     exit 1
   fi
-else
-  success "kubectl déjà présent ($(kubectl version --client --short))."
 fi
 
 info "Installation du binaire kubesphere (simulée)…"
@@ -106,7 +121,7 @@ else
 fi
 
 # Test 2 : service kubelet actif
-info "Test 2 : vérification du service kubelet"
+info "Test 2 : statut du service kubelet"
 if systemctl is-active --quiet kubelet; then
   success "Service kubelet actif."
   ((PASS_COUNT++))
