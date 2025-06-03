@@ -1,9 +1,5 @@
 Kubernetes est un système open source conçu pour automatiser le déploiement, la mise à l'échelle et la gestion des applications conteneurisées. Il a été initialement développé par Google et est maintenant maintenu par la Cloud Native Computing Foundation. 
 
-![cicd.png](attachment:494735f5-c21e-4c74-a7ea-4e5a3922fae6:cicd.png)
-
-![app-store.png](attachment:61af1aea-1a05-412f-9774-e64d8caef39b:app-store.png)
-
 Kubernetes permet de gérer des clusters d'hôtes exécutant des conteneurs Docker, facilitant ainsi la gestion des applications distribuées et des microservices. Voici quelques caractéristiques clés de Kubernetes :
 
 1. **Orchestration de conteneurs** : Kubernetes aide à orchestrer les conteneurs sur plusieurs hôtes, en s'assurant que les applications fonctionnent comme prévu.
