@@ -104,7 +104,7 @@ FAIL_COUNT=0
 
 # Test 1 : version minimale de kubectl
 info "Test 1 : vérifier que kubectl ≥ 1.20.0"
-INSTALLED_VER_RAW=$(kubectl version --client --output=jsonpath='{.clientVersion.gitVersion}')
+INSTALLED_VER_RAW=$(kubectl version --client -o=jsonpath='{.clientVersion.gitVersion}')
 KUBECTL_VER="${INSTALLED_VER_RAW#v}"
 REQUIRED_VER="1.20.0"
 if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
