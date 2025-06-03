@@ -6,7 +6,7 @@
 #    ___) | |_| |   <|  __/| |  __/\ V / (_) | | || (_) | | | |
 #   |____/ \__,_|_|\_\_|   |_|\___| \_/ \___/|_|\__\___/|_| |_|
 #
-#    Script d'installation & vérification avec LOG + Design
+#    Script d'installation & vérification (version simplifiée pour kubectl)
 #    Dépôt : charlesvdd/kubesphere (branche : install)
 ###############################################################################
 
@@ -68,45 +68,28 @@ else
   success "curl déjà présent ($(curl --version | head -n1))."
 fi
 
-# 2) Supprimer toute ancienne source pkgs.k8s.io pour éviter le 403
-info "Suppression des éventuelles anciennes entrées APT vers pkgs.k8s.io..."
-sudo grep -Rl "pkgs.k8s.io" /etc/apt/sources.list* 2>/dev/null | \
-  xargs -r sudo sed -i.bak '/pkgs.k8s.io/d'
-# (on fait une copie .bak automatiquement pour toute ligne contenant pkgs.k8s.io)
+# 2) Installer kubectl MANUELLEMENT (binaire de la dernière version stable)
+info "kubectl non trouvé → installation manuelle du binaire"
 
-# 3) Installer kubectl via le dépôt officiel / bascule sur binaire si besoin
-info "kubectl non trouvé → tentative d’installation via APT (dépôt officiel)…"
+# Récupérer la dernière version stable
+KC_VERSION=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
+if [ -z "${KC_VERSION}" ]; then
+  error "Impossible de déterminer la version stable de kubectl."
+  exit 1
+fi
+info "Version stable détectée : ${KC_VERSION}"
 
-# a) Ajouter le dépôt officiel Kubernetes s’il n’existe pas déjà
-if ! grep -q "^deb .\+apt.kubernetes.io" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
-  info "Ajout du dépôt Kubernetes officiel dans APT."
-  sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl
-  sudo curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-  echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+TMP_BIN="/tmp/kubectl"
+if curl -fsSL "https://dl.k8s.io/release/${KC_VERSION}/bin/linux/amd64/kubectl" -o "${TMP_BIN}"; then
+  chmod +x "${TMP_BIN}"
+  sudo mv "${TMP_BIN}" /usr/local/bin/kubectl
+  success "kubectl ${KC_VERSION} installé dans /usr/local/bin/kubectl."
 else
-  info "Le dépôt Kubernetes est déjà présent."
+  error "Impossible de télécharger kubectl ${KC_VERSION}. Vérifiez la connectivité ou la version."
+  exit 1
 fi
 
-# b) Essayer l’installation via apt-get
-if sudo apt-get update && sudo apt-get install -y kubectl; then
-  success "kubectl installé via apt ($(kubectl version --client --short))."
-else
-  warning "Échec de l’installation via apt. Passage à l’installation manuelle du binaire kubectl."
-
-  KC_VERSION="v1.24.0"   # Modifiez ici la version souhaitée
-  info "Téléchargement du binaire kubectl ${KC_VERSION}…"
-  TMP_BIN="/tmp/kubectl"
-  if curl -fsSL "https://dl.k8s.io/release/${KC_VERSION}/bin/linux/amd64/kubectl" -o "${TMP_BIN}"; then
-    chmod +x "${TMP_BIN}"
-    sudo mv "${TMP_BIN}" /usr/local/bin/kubectl
-    success "kubectl ${KC_VERSION} installé manuellement dans /usr/local/bin/kubectl."
-  else
-    error "Impossible de télécharger kubectl ${KC_VERSION}. Vérifiez la connectivité ou la version."
-    exit 1
-  fi
-fi
-
-# 4) Simuler l’installation de kubesphere (ou placez ici vos vraies commandes)
+# 3) Simuler l’installation de kubesphere (ou placez ici vos vraies commandes)
 info "Installation du binaire kubesphere (simulée)…"
 sleep 1
 success "kubesphere installé."
@@ -121,7 +104,10 @@ FAIL_COUNT=0
 
 # Test 1 : version minimale de kubectl
 info "Test 1 : vérifier que kubectl ≥ 1.20.0"
-KUBECTL_VER="$(kubectl version --client --short | awk '{print $3}' | sed 's/v//')"
+# Récupérer la version via JSONPath pour éviter tout artefact de format
+INSTALLED_VER_RAW=$(kubectl version --client --output=jsonpath='{.clientVersion.gitVersion}')
+# INSTALLED_VER_RAW contient quelque chose comme "v1.24.0" ; retirer le "v"
+KUBECTL_VER="${INSTALLED_VER_RAW#v}"
 REQUIRED_VER="1.20.0"
 if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
   success "kubectl (${KUBECTL_VER}) satisfait la version minimale (${REQUIRED_VER})."
