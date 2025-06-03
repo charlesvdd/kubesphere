@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 ###############################################################################
-#    ____        _    ____  _                   _              
-#   / ___| _   _| | _|  _ \| | _____   _____  _| |_ ___  _ __  
-#   \___ \| | | | |/ / |_) | |/ _ \ \ / / _ \| | __/ _ \| '_ \ 
+#    ____        _    ____  _                   _
+#   / ___| _   _| | _|  _ \| | _____   _____  _| |_ ___  _ __
+#   \___ \| | | | |/ / |_) | |/ _ \ \ / / _ \| | __/ _ \| '_ \
 #    ___) | |_| |   <|  __/| |  __/\ V / (_) | | || (_) | | | |
 #   |____/ \__,_|_|\_\_|   |_|\___| \_/ \___/|_|\__\___/|_| |_|
 #
-#    Script d'installation & vérification (version simplifiée pour kubectl)
-#    Dépôt : charlesvdd/kubesphere (branche : install)
+#   Script d’installation & vérification (avec Snap pour Kubernetes)
+#   Dépôt : charlesvdd/kubesphere (branche : install)
 ###############################################################################
 
 # ─── COULEURS ANSI ───────────────────────────────────────────────────────────
@@ -68,28 +68,45 @@ else
   success "curl déjà présent ($(curl --version | head -n1))."
 fi
 
-# 2) Installer kubectl MANUELLEMENT (binaire de la dernière version stable)
-info "kubectl non trouvé → installation manuelle du binaire"
-
-# Récupérer la dernière version stable
-KC_VERSION=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
-if [ -z "${KC_VERSION}" ]; then
-  error "Impossible de déterminer la version stable de kubectl."
-  exit 1
-fi
-info "Version stable détectée : ${KC_VERSION}"
-
-TMP_BIN="/tmp/kubectl"
-if curl -fsSL "https://dl.k8s.io/release/${KC_VERSION}/bin/linux/amd64/kubectl" -o "${TMP_BIN}"; then
-  chmod +x "${TMP_BIN}"
-  sudo mv "${TMP_BIN}" /usr/local/bin/kubectl
-  success "kubectl ${KC_VERSION} installé dans /usr/local/bin/kubectl."
+# 2) Vérifier/installer snapd
+if ! command -v snap &>/dev/null; then
+  info "snapd non trouvé → installation en cours..."
+  if sudo apt-get update && sudo apt-get install -y snapd; then
+    success "snapd installé avec succès."
+  else
+    error "Échec de l'installation de snapd."
+    exit 1
+  fi
 else
-  error "Impossible de télécharger kubectl ${KC_VERSION}. Vérifiez la connectivité ou la version."
-  exit 1
+  success "snapd déjà présent ($(snap version | head -n1))."
 fi
 
-# 3) Simuler l’installation de kubesphere (ou placez ici vos vraies commandes)
+# 3) Installer kubeadm, kubelet et kubectl via Snap en mode --classic
+header "INSTALLATION DES BINAIRES KUBERNETES VIA SNAP"
+SNAP_PKGS=("kubeadm" "kubelet" "kubectl")
+for PKG in "${SNAP_PKGS[@]}"; do
+  if ! snap list | grep -q "^${PKG} "; then
+    info "Installation de ${PKG} via snap..."
+    if sudo snap install "${PKG}" --classic; then
+      success "${PKG} installé via snap."
+    else
+      error "Échec de l'installation de ${PKG} via snap."
+      exit 1
+    fi
+  else
+    INST_VER=$(snap list | awk -v p="$PKG" '$1==p {print $2}')
+    success "${PKG} déjà installé (version ${INST_VER})."
+  fi
+done
+
+# 4) Vérifier les versions installées
+info "Vérification des versions des binaires Kubernetes"
+kubeadm version         # Exemple : "kubeadm version: v1.24.x"
+kubelet --version       # Exemple : "Client Version: v1.24.x"
+kubectl version --client  # Exemple : "Client Version: v1.24.x"
+success "kubeadm, kubelet, kubectl sont opératoires."
+
+# 5) Simuler l’installation de kubesphere (ou placez ici vos vraies commandes)
 info "Installation du binaire kubesphere (simulée)…"
 sleep 1
 success "kubesphere installé."
@@ -104,9 +121,7 @@ FAIL_COUNT=0
 
 # Test 1 : version minimale de kubectl
 info "Test 1 : vérifier que kubectl ≥ 1.20.0"
-# Récupérer la version via JSONPath pour éviter tout artefact de format
 INSTALLED_VER_RAW=$(kubectl version --client --output=jsonpath='{.clientVersion.gitVersion}')
-# INSTALLED_VER_RAW contient quelque chose comme "v1.24.0" ; retirer le "v"
 KUBECTL_VER="${INSTALLED_VER_RAW#v}"
 REQUIRED_VER="1.20.0"
 if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
@@ -154,10 +169,10 @@ ENDPOINT="https://mon-serveur.example.com/upload"
 info "Envoi du log (${LOGFILE}) vers ${ENDPOINT}..."
 
 if curl -X POST \
-        -H "Content-Type: multipart/form-data" \
-        -F "file=@${LOGFILE}" \
-        "${ENDPOINT}" \
-        --silent --show-error; then
+       -H "Content-Type: multipart/form-data" \
+       -F "file=@${LOGFILE}" \
+       "${ENDPOINT}" \
+       --silent --show-error; then
   success "Log envoyé avec succès."
 else
   error "L'envoi du log a échoué."
