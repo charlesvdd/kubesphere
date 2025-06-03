@@ -104,9 +104,19 @@ FAIL_COUNT=0
 
 # Test 1 : vérifier que kubectl ≥ 1.20.0
 info "Test 1 : vérifier que kubectl ≥ 1.20.0"
-INSTALLED_VER_RAW=$(kubectl version --client --short 2>/dev/null | head -n1 | awk '{print $3}')
-# par ex. INSTALLED_VER_RAW="v1.33.1"
+
+# 1) Afficher la ligne brute pour debug :
+RAW_LINE=$(kubectl version --client --short 2>/dev/null | head -n1)
+info "→ Ligne brute retournée par “kubectl version” : ${RAW_LINE}"
+
+# 2) Extraire la 3ᵉ colonne (qui est normalement “vX.Y.Z”)
+INSTALLED_VER_RAW=$(echo "${RAW_LINE}" | awk '{print $3}')
+info "→ Version brute extraite (avec v) : ${INSTALLED_VER_RAW}"
+
+# 3) Supprimer le préfixe “v”
 KUBECTL_VER="${INSTALLED_VER_RAW#v}"
+info "→ Version nettoyée (sans v) : ${KUBECTL_VER}"
+
 REQUIRED_VER="1.20.0"
 if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
   success "kubectl (${KUBECTL_VER}) satisfait la version minimale (${REQUIRED_VER})."
