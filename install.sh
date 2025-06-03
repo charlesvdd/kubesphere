@@ -55,7 +55,7 @@ echo ""
 # ─── BLOC INSTALLATION ────────────────────────────────────────────────────────
 header "INSTALLATION DES DÉPENDANCES"
 
-# Installation de curl
+# 1) Vérifier/installer curl
 if ! command -v curl &>/dev/null; then
   info "curl non trouvé → installation en cours..."
   if sudo apt-get update && sudo apt-get install -y curl; then
@@ -68,8 +68,16 @@ else
   success "curl déjà présent ($(curl --version | head -n1))."
 fi
 
-# Installation de kubectl (avec fallback manuel)
+# 2) Supprimer toute ancienne source pkgs.k8s.io pour éviter le 403
+info "Suppression des éventuelles anciennes entrées APT vers pkgs.k8s.io..."
+sudo grep -Rl "pkgs.k8s.io" /etc/apt/sources.list* 2>/dev/null | \
+  xargs -r sudo sed -i.bak '/pkgs.k8s.io/d'
+# (on fait une copie .bak automatiquement pour toute ligne contenant pkgs.k8s.io)
+
+# 3) Installer kubectl via le dépôt officiel / bascule sur binaire si besoin
 info "kubectl non trouvé → tentative d’installation via APT (dépôt officiel)…"
+
+# a) Ajouter le dépôt officiel Kubernetes s’il n’existe pas déjà
 if ! grep -q "^deb .\+apt.kubernetes.io" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
   info "Ajout du dépôt Kubernetes officiel dans APT."
   sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl
@@ -79,25 +87,28 @@ else
   info "Le dépôt Kubernetes est déjà présent."
 fi
 
+# b) Essayer l’installation via apt-get
 if sudo apt-get update && sudo apt-get install -y kubectl; then
   success "kubectl installé via apt ($(kubectl version --client --short))."
 else
-  warning "Échec de l’installation via apt. Passage à l’installation manuelle du binaire."
-  KC_VERSION="v1.24.0"
+  warning "Échec de l’installation via apt. Passage à l’installation manuelle du binaire kubectl."
+
+  KC_VERSION="v1.24.0"   # Modifiez ici la version souhaitée
   info "Téléchargement du binaire kubectl ${KC_VERSION}…"
   TMP_BIN="/tmp/kubectl"
   if curl -fsSL "https://dl.k8s.io/release/${KC_VERSION}/bin/linux/amd64/kubectl" -o "${TMP_BIN}"; then
     chmod +x "${TMP_BIN}"
     sudo mv "${TMP_BIN}" /usr/local/bin/kubectl
-    success "kubectl ${KC_VERSION} installé manuellement (/usr/local/bin/kubectl)."
+    success "kubectl ${KC_VERSION} installé manuellement dans /usr/local/bin/kubectl."
   else
     error "Impossible de télécharger kubectl ${KC_VERSION}. Vérifiez la connectivité ou la version."
     exit 1
   fi
 fi
 
+# 4) Simuler l’installation de kubesphere (ou placez ici vos vraies commandes)
 info "Installation du binaire kubesphere (simulée)…"
-sleep 1  # Simuler un téléchargement/compilation
+sleep 1
 success "kubesphere installé."
 
 echo ""
@@ -120,7 +131,7 @@ else
   ((FAIL_COUNT++))
 fi
 
-# Test 2 : service kubelet actif
+# Test 2 : statut du service kubelet
 info "Test 2 : statut du service kubelet"
 if systemctl is-active --quiet kubelet; then
   success "Service kubelet actif."
