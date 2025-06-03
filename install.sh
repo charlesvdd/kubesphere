@@ -6,7 +6,7 @@
 #    ___) | |_| |   <|  __/| |  __/\ V / (_) | | || (_) | | | |
 #   |____/ \__,_|_|\_\_|   |_|\___| \_/ \___/|_|\__\___/|_| |_|
 #
-#   Script d’installation & vérification (Nettoyage + Snap + kubeadm init)
+#   Script d’installation & vérification (Nettoyage intégral + Snap + kubeadm init)
 #   Dépôt : charlesvdd/kubesphere (branche : install)
 ###############################################################################
 
@@ -52,18 +52,19 @@ header "DÉMARRAGE DU SCRIPT D'INSTALLATION"
 info "Date/Heure : $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
 
-# ─── BLOC NETTOYAGE D’OUVREURS EXISTANTS ──────────────────────────────────────
+# ─── BLOC NETTOYAGE D’INSTALLATIONS EXISTANTES ─────────────────────────────────
 header "NETTOYAGE DES INSTALLATIONS KUBERNETES EXISTANTES"
 
-# 1) Arrêter et désactiver kubelet (APT)
+# 1) Arrêter, désactiver et purger kubelet apt (si présent)
 if dpkg -l | grep -q kubelet; then
-  info "Arrêt du service kubelet (APT)…"
+  info "Arrêt, désactivation et purge du service kubelet (APT)…"
   sudo systemctl stop kubelet.service || true
   sudo systemctl disable kubelet.service || true
-  success "Service kubelet (APT) arrêté et désactivé."
+  sudo apt-get purge -y kubelet
+  success "Service kubelet (APT) arrêté et purgé."
 fi
 
-# 2) Désactiver et supprimer kubelet snap
+# 2) Désinstaller kubelet snap (si présent)
 if snap list | grep -q "^kubelet\s"; then
   info "Désactivation et suppression du snap kubelet…"
   sudo snap disable kubelet || true
@@ -71,7 +72,37 @@ if snap list | grep -q "^kubelet\s"; then
   success "Snap kubelet supprimé."
 fi
 
-# 3) Arrêter et supprimer MicroK8s (snap)
+# 3) Arrêter, désactiver et purger kubeadm apt (si présent)
+if dpkg -l | grep -q kubeadm; then
+  info "Arrêt, désactivation et purge de kubeadm (APT)…"
+  sudo systemctl stop kubelet.service || true
+  sudo systemctl disable kubelet.service || true
+  sudo apt-get purge -y kubeadm
+  success "kubeadm (APT) purgé."
+fi
+
+# 4) Désinstaller kubeadm snap (si présent)
+if snap list | grep -q "^kubeadm\s"; then
+  info "Suppression du snap kubeadm…"
+  sudo snap remove kubeadm || true
+  success "Snap kubeadm supprimé."
+fi
+
+# 5) Arrêter, désactiver et purger kubectl apt (si présent)
+if dpkg -l | grep -q kubectl; then
+  info "Purge de kubectl (APT)…"
+  sudo apt-get purge -y kubectl
+  success "kubectl (APT) purgé."
+fi
+
+# 6) Désinstaller kubectl snap (si présent)
+if snap list | grep -q "^kubectl\s"; then
+  info "Suppression du snap kubectl…"
+  sudo snap remove kubectl || true
+  success "Snap kubectl supprimé."
+fi
+
+# 7) Arrêter et supprimer MicroK8s (snap)
 if snap list | grep -q "^microk8s\s"; then
   info "Arrêt et suppression de MicroK8s…"
   sudo snap disable microk8s || true
@@ -80,7 +111,7 @@ if snap list | grep -q "^microk8s\s"; then
   success "MicroK8s supprimé."
 fi
 
-# 4) Arrêter et supprimer k3s
+# 8) Arrêter et supprimer k3s
 if systemctl list-units --full -all | grep -qE 'k3s.service|k3s-agent.service'; then
   info "Arrêt et suppression de k3s…"
   sudo systemctl stop k3s.service 2>/dev/null || true
@@ -91,7 +122,7 @@ if systemctl list-units --full -all | grep -qE 'k3s.service|k3s-agent.service'; 
   success "k3s supprimé."
 fi
 
-# 5) Libérer les ports 10250, 6443, 2379, 2380
+# 9) Libérer les ports 10250, 6443, 2379, 2380
 for PORT in 10250 6443 2379 2380; do
   if sudo ss -tulpn | grep -q ":${PORT}"; then
     PROC_PID=$(sudo lsof -t -i :"${PORT}" 2>/dev/null || true)
@@ -103,30 +134,12 @@ for PORT in 10250 6443 2379 2380; do
   fi
 done
 
-# 6) Purger paquets kubeadm, kubelet, kubectl (APT)
-if dpkg -l | grep -qE 'kubeadm|kubelet|kubectl'; then
-  info "Purge des paquets kubeadm/kubelet/kubectl (APT)…"
-  sudo apt-get purge -y kubeadm kubelet kubectl
-  sudo apt-get autoremove -y
-  sudo rm -rf /etc/kubernetes /var/lib/kubelet /var/lib/etcd /etc/cni/net.d /var/lib/cni ~/.kube
-  success "Paquets Kubernetes APT purgés."
-fi
-
-# 7) Supprimer les snaps Kubernetes restants
-for PKG in kubeadm kubectl microk8s; do
-  if snap list | grep -q "^${PKG}\s"; then
-    info "Suppression du snap ${PKG}…"
-    sudo snap remove "${PKG}" || true
-    success "Snap ${PKG} supprimé."
-  fi
-done
-
-# 8) Purger fichiers CNI et etcd
+# 10) Supprimer files CNI et etcd résiduels
 info "Suppression des configurations CNI et etcd résiduelles…"
-sudo rm -rf /etc/cni/net.d /opt/cni /etc/calico /var/lib/calico /etc/flannel /var/lib/flannel /var/lib/etcd
-success "Configurations CNI et etcd supprimées."
+sudo rm -rf /etc/kubernetes /var/lib/kubelet /var/lib/etcd /etc/cni/net.d /opt/cni /etc/calico /var/lib/calico /etc/flannel /var/lib/flannel ~/.kube
+success "Configurations résiduelles supprimées."
 
-# 9) Réinitialiser containerd si nécessaire
+# 11) Réinitialiser containerd si nécessaire
 if [ -f /etc/containerd/config.toml ]; then
   info "Suppression de l’ancienne configuration containerd…"
   sudo rm -f /etc/containerd/config.toml
@@ -134,7 +147,7 @@ if [ -f /etc/containerd/config.toml ]; then
 fi
 
 echo ""
-success "Nettoyage terminé. Aucune installation Kubernetes résiduelle détectée."
+success "Nettoyage complet terminé. Aucune installation Kubernetes résiduelle détectée."
 echo ""
 
 # ─── BLOC INSTALLATION DES DÉPENDANCES ────────────────────────────────────────
@@ -209,6 +222,7 @@ info "Configuration de containerd (SystemdCgroup = true)…"
 sudo mkdir -p /etc/containerd
 sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+sudo systemctl daemon-reload
 sudo systemctl restart containerd
 sudo systemctl enable containerd
 success "containerd configuré et en service."
@@ -218,7 +232,7 @@ echo ""
 # ─── BLOC INITIALISATION DU CLUSTER ───────────────────────────────────────────
 header "INITIALISATION DU CLUSTER KUBERNETES"
 
-# 1) Désactiver le swap (Kubernetes l'exige)
+# 1) Désactiver le swap (nécessaire pour Kubernetes)
 info "Désactivation du swap (temporaire)…"
 sudo swapoff -a
 
@@ -226,16 +240,30 @@ sudo swapoff -a
 info "Activation du forwarding IPv4…"
 sudo sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-kube-forward.conf >/dev/null
-sudo sysctl --system
+sudo sysctl --system >/dev/null
 success "Forwarding IPv4 activé."
 
-# 3) Initialiser le master avec kubeadm
+# 3) Supprimer tout résidu de kubelet avant init (stop, disable, remove snap)
+info "Arrêt, désactivation et suppression de kubelet avant init…"
+sudo systemctl stop kubelet.service     || true
+sudo systemctl disable kubelet.service  || true
+if snap list | grep -q "^kubelet\s"; then
+  sudo snap remove kubelet || true
+fi
+# Si un processus écoute encore sur 10250, le tuer
+if sudo ss -tulpn | grep -q ":10250"; then
+  PROC_PID=$(sudo lsof -t -i :10250)
+  [ -n "${PROC_PID}" ] && sudo kill -9 "${PROC_PID}" || true
+  success "Port 10250 libéré."
+fi
+
+# 4) Initialiser le master avec kubeadm
 info "Initialisation du nœud master (kubeadm init)…"
 sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \
   --cri-socket /run/containerd/containerd.sock
 
-# 4) Configurer kubectl pour root
+# 5) Configurer kubectl pour root
 info "Configuration de kubectl pour l'utilisateur root…"
 sudo mkdir -p /root/.kube
 sudo cp -i /etc/kubernetes/admin.conf /root/.kube/config
@@ -243,12 +271,12 @@ sudo chown root:root /root/.kube/config
 sudo chmod 600 /root/.kube/config
 success "kubectl configuré pour root."
 
-# 5) Déployer le CNI (Calico recommandé en production)
+# 6) Déployer le CNI (Calico recommandé en production)
 info "Déploiement du CNI Calico…"
 kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 success "Manifest Calico appliqué."
 
-# 6) Vérifier que le master passe en Ready
+# 7) Vérifier que le master passe en Ready
 info "Vérification de l'état du nœud master…"
 kubectl get nodes
 kubectl get pods -n kube-system
