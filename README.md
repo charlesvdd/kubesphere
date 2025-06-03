@@ -42,13 +42,7 @@ Ensemble, Kubernetes et KubeSphere offrent une solution puissante pour la gestio
 - **Extensibilité** : Peut être étendu avec une grande variété d'outils et de plugins.
 - **Communauté et support** : Large communauté et support étendu de la part des principaux fournisseurs de cloud.
 - **Efficacité des ressources** : Optimisation de l'utilisation des ressources grâce à l'orchestration intelligente des conteneurs.
-
-## Modelisartion
-
-![architecture.png](attachment:9b4d6aee-9ceb-43f3-8f23-3f0529b7928b:architecture.png)
-
-### KubeSphere
-
+- 
 ### Fonctionnalités
 
 1. **Interface utilisateur graphique** : Interface intuitive pour la gestion des clusters Kubernetes.
