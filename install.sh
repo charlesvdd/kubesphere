@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-#  install.sh – Kubernetes 1.24 + KubeSphere 3.3.x sur Ubuntu 22.04/24.04
-#  © 2025 Charles van den Driessche - Neomnia
+# install.sh – Kubernetes 1.24 + KubeSphere 3.3.x sur Ubuntu 22.04/24.04
+# © 2025 Charles van den Driessche – Neomnia
 #
-#  • Purge anciens dépôts Kubernetes xenial
-#  • Détection automatique des miroirs (deb.k8s.io → pkgs.k8s.io → aliyun)
-#  • Gestion clés GPG miroirs
-#  • Déploiement Local-Path provisioner & StorageClass par défaut
-#  • Suppression des taints control-plane pour cluster single-node
-#  • Logging complet dans /var/log/kubesphere-install-<DATE>.log
+# • Purge anciens dépôts Kubernetes xenial
+# • Détection automatique des miroirs (deb.k8s.io → pkgs.k8s.io → aliyun)
+# • Gestion clés GPG miroirs
+# • Déploiement Local-Path provisioner & StorageClass par défaut
+# • Suppression des taints control-plane pour cluster single-node
+# • Logging complet dans /var/log/kubesphere-install-<DATE>.log
 # -----------------------------------------------------------------------------
 set -euo pipefail
 exec > >(tee -a "/var/log/kubesphere-install-$(date +%F_%H-%M-%S).log") 2>&1
@@ -42,7 +42,7 @@ fail() { printf "\e[1;31m[FAIL]\e[0m  %s\n" "$*\n" >&2; exit 1; }
 log "Prise en compte des paramètres…"
 
 # -----------------------------------------------------------
-# 0. Pré-requis de base (swap, modules, packages)
+# 0. Pré-requis de base (swap, modules, paquets)
 # -----------------------------------------------------------
 log "Désactivation du swap"
 swapoff -a || true
@@ -65,7 +65,8 @@ EOF
 sysctl --system
 
 log "Installation des paquets de base"
-apt update && DEBIAN_FRONTEND=noninteractive apt install -y \
+apt update
+DEBIAN_FRONTEND=noninteractive apt install -y \
   apt-transport-https ca-certificates curl gnupg lsb-release ufw \
   bash-completion net-tools software-properties-common
 
@@ -81,24 +82,29 @@ sed -i '/kubernetes/d' /etc/apt/sources.list || true
 # -----------------------------------------------------------
 log "Détection automatique du miroir Kubernetes et récupération de la clé GPG"
 mkdir -p /etc/apt/keyrings
-declare -A MIRRORS=(
-  [debk8s]="https://deb.k8s.io/ kubernetes-xenial main|google"
-  [pkgs]  ="https://pkgs.k8s.io/core/stable/v1.24/deb/ /|google"
-  [aliyun]="https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main|aliyun"
-)
-CHOSEN_URL=""; CHOSEN_KEY=""
+
+declare -A MIRRORS
+MIRRORS[debk8s]="https://deb.k8s.io/ kubernetes-xenial main|google"
+MIRRORS[pkgs]="https://pkgs.k8s.io/core/stable/v1.24/deb/ /|google"
+MIRRORS[aliyun]="https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main|aliyun"
+
+CHOSEN_URL=""
+CHOSEN_KEY=""
+
 for key in debk8s pkgs aliyun; do
   IFS='|' read -r URL KEY <<< "${MIRRORS[$key]}"
-  TEST_URL=$(awk '{print $1}' <<< "$URL")"dists/kubernetes-xenial/Release"
+  TEST_URL="$(awk '{print $1}' <<< "$URL")dists/kubernetes-xenial/Release"
   echo -n "  → Test miroir $key… "
   if curl -fs --connect-timeout 5 "$TEST_URL" >/dev/null; then
-    CHOSEN_URL="$URL"; CHOSEN_KEY="$KEY"
+    CHOSEN_URL="$URL"
+    CHOSEN_KEY="$KEY"
     echo -e "\e[1;32mOK\e[0m"
     break
   else
     echo -e "\e[1;33mNON\e[0m"
   fi
 done
+
 [[ -n "$CHOSEN_URL" ]] || fail "Aucun dépôt Kubernetes accessible."
 
 if [[ "$CHOSEN_KEY" == "google" ]]; then
@@ -110,14 +116,16 @@ else
     | gpg --dearmor -o /etc/apt/keyrings/kubernetes-aliyun.gpg
   KEYFILE=/etc/apt/keyrings/kubernetes-aliyun.gpg
 fi
+
 echo "deb [signed-by=$KEYFILE] $CHOSEN_URL" >/etc/apt/sources.list.d/kubernetes.list
 
 # -----------------------------------------------------------
-# 3. Installation containerd + Kubernetes binaries
+# 3. Installation containerd + binaires Kubernetes
 # -----------------------------------------------------------
 log "Ajout du dépôt Docker pour containerd"
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
   >/etc/apt/sources.list.d/docker.list
@@ -130,9 +138,9 @@ containerd config default >/etc/containerd/config.toml
 sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 systemctl restart containerd && systemctl enable containerd
 
-log "Installation de kubelet, kubeadm et kubectl"
-DEBIAN_FRONTEND=noninteractive apt install -y kubelet="${K8S_VER}" \
-  kubeadm="${K8S_VER}" kubectl="${K8S_VER}"
+log "Installation de kubelet, kubeadm, kubectl"
+DEBIAN_FRONTEND=noninteractive apt install -y \
+  kubelet="${K8S_VER}" kubeadm="${K8S_VER}" kubectl="${K8S_VER}"
 apt-mark hold kubelet kubeadm kubectl
 
 # -----------------------------------------------------------
@@ -143,13 +151,13 @@ kubeadm init \
   --pod-network-cidr="${POD_CIDR}" \
   --cri-socket=unix:///run/containerd/containerd.sock
 
-log "Configuration de kubectl pour l’utilisateur actuel"
+log "Configuration de kubectl pour l’utilisateur courant"
 mkdir -p "$HOME/.kube"
 cp -i /etc/kubernetes/admin.conf "$HOME/.kube/config"
 chmod 600 "$HOME/.kube/config"
 
 # -----------------------------------------------------------
-# 5. Déploiement de CNI Calico
+# 5. Déploiement de Calico (CNI)
 # -----------------------------------------------------------
 log "Déploiement de Calico (CNI)"
 curl -sSL https://docs.projectcalico.org/manifests/calico.yaml \
@@ -172,7 +180,7 @@ kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
 kubectl taint nodes --all node-role.kubernetes.io/master- || true
 
 # -----------------------------------------------------------
-# 8. Déploiement KubeSphere 3.3.2
+# 8. Déploiement de KubeSphere 3.3.2
 # -----------------------------------------------------------
 log "Déploiement de KubeSphere 3.3.2"
 kubectl apply -f https://github.com/kubesphere/ks-installer/releases/download/v3.3.2/kubesphere-installer.yaml
@@ -201,12 +209,12 @@ cat << 'EOF'
 ###            KubeSphere est opérationnel !      ###
 #####################################################
 Console : http://$(hostname -I | awk '{print $1}'):30880
-Compte  : admin
+Compte : admin
 Password: P@88w0rd
 EOF
 
 # -----------------------------------------------------------
-# 9. Pare-feu UFW (port 22 + 30880)
+# 9. Configuration pare-feu UFW (port 22 + 30880)
 # -----------------------------------------------------------
 log "Configuration du pare-feu UFW"
 ufw default deny incoming
@@ -218,4 +226,3 @@ ufw --force enable
 echo ""
 log "Installation terminée avec succès !"
 echo ""
-EOF
