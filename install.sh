@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 ###############################################################################
-#    ____        _    ____  _                   _              
-#   / ___| _   _| | _|  _ \| | _____   _____  _| |_ ___  _ __  
-#   \___ \| | | | |/ / |_) | |/ _ \ \ / / _ \| | __/ _ \| '_ \ 
+#    ____        _    ____  _                   _
+#   / ___| _   _| | _|  _ \| | _____   _____  _| |_ ___  _ __
+#   \___ \| | | | |/ / |_) | |/ _ \ \ / / _ \| | __/ _ \| '_ \
 #    ___) | |_| |   <|  __/| |  __/\ V / (_) | | || (_) | | | |
 #   |____/ \__,_|_|\_\_|   |_|\___| \_/ \___/|_|\__\___/|_| |_|
 #
@@ -106,11 +106,11 @@ kubelet --version       # Exemple : "Client Version: v1.24.x"
 kubectl version --client  # Exemple : "Client Version: v1.24.x"
 success "kubeadm, kubelet, kubectl sont opératoires."
 
-# 5) Installer et configurer containerd
+# ─── BLOC INSTALLATION ET CONFIGURATION DE CONTAINERD ─────────────────────────────
 header "INSTALLATION ET CONFIGURATION DE CONTAINERD"
 if ! command -v containerd &>/dev/null; then
   info "containerd non trouvé → installation en cours..."
-  if sudo apt-get update && sudo apt-get install -y containerd.io; then
+  if sudo apt-get update && sudo apt-get install -y containerd; then
     success "containerd installé."
   else
     error "Échec de l'installation de containerd."
@@ -120,7 +120,7 @@ else
   success "containerd déjà présent."
 fi
 
-info "Configuration de containerd (SystemdCgroup = true)..."
+info "Configuration de containerd (SystemdCgroup = true)…"
 sudo mkdir -p /etc/containerd
 sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
@@ -134,18 +134,17 @@ echo ""
 header "INITIALISATION DU CLUSTER KUBERNETES"
 
 # 1) Désactiver le swap (Kubernetes l'exige)
-info "Désactivation du swap (temporaire)..."
+info "Désactivation du swap (temporaire)…"
 sudo swapoff -a
-# On ne modifie pas /etc/fstab automatiquement ici, on suppose que l'administrateur le fera si nécessaire.
 
 # 2) Initialiser le master avec kubeadm
-info "Initialisation du nœud master (kubeadm init)..."
+info "Initialisation du nœud master (kubeadm init)…"
 sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \
   --cri-socket /run/containerd/containerd.sock
 
 # 3) Configurer kubectl pour root
-info "Configuration de kubectl pour l'utilisateur root..."
+info "Configuration de kubectl pour l'utilisateur root…"
 sudo mkdir -p /root/.kube
 sudo cp -i /etc/kubernetes/admin.conf /root/.kube/config
 sudo chown root:root /root/.kube/config
@@ -153,12 +152,12 @@ sudo chmod 600 /root/.kube/config
 success "kubectl configuré pour root."
 
 # 4) Déployer le CNI (Calico recommandé en production)
-info "Déploiement du CNI Calico..."
+info "Déploiement du CNI Calico…"
 kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 success "Manifest Calico appliqué."
 
 # 5) Vérifier que le master passe en Ready
-info "Vérification de l'état du nœud master..."
+info "Vérification de l'état du nœud master…"
 kubectl get nodes
 kubectl get pods -n kube-system
 
@@ -225,7 +224,7 @@ echo ""
 header "ENVOI DU LOG D'INSTALLATION"
 
 ENDPOINT="https://mon-serveur.example.com/upload"
-info "Envoi du log (${LOGFILE}) vers ${ENDPOINT}..."
+info "Envoi du log (${LOGFILE}) vers ${ENDPOINT}…"
 
 if curl -X POST \
        -H "Content-Type: multipart/form-data" \
