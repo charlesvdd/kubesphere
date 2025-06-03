@@ -96,7 +96,6 @@ success "kubesphere installé."
 
 echo ""
 
-...
 # ─── BLOC TESTS DE VÉRIFICATION ─────────────────────────────────────────────────
 header "VÉRIFICATIONS POST-INSTALLATION"
 
@@ -105,21 +104,60 @@ FAIL_COUNT=0
 
 # Test 1 : vérifier que kubectl ≥ 1.20.0
 info "Test 1 : vérifier que kubectl ≥ 1.20.0"
-INSTALLED_VER_RAW=$(kubectl version --client --short 2>/dev/null | head -n1 | awk '{print $3}')
-# par exemple INSTALLED_VER_RAW="v1.33.1"
-KUBECTL_VER="${INSTALLED_VER_RAW#v}"
-REQUIRED_VER="1.20.0"
-if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
-  success "kubectl (${KUBECTL_VER}) satisfait la version minimale (${REQUIRED_VER})."
-  ((PASS_COUNT++))
-else
-  error "kubectl (${KUBECTL_VER}) est inférieur à ${REQUIRED_VER}."
+
+INSTALLED_VER_RAW=$(
+  kubectl version --client --short 2>&1 \
+  | grep '^Client Version:' \
+  | head -n1 \
+  | awk '{print $3}'
+)
+# Par exemple INSTALLED_VER_RAW="v1.33.1"
+
+if [ -z "${INSTALLED_VER_RAW}" ]; then
+  error "Impossible de récupérer la version de kubectl."
   ((FAIL_COUNT++))
+else
+  KUBECTL_VER="${INSTALLED_VER_RAW#v}"   # ex. "1.33.1"
+  REQUIRED_VER="1.20.0"
+  if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
+    success "kubectl (${KUBECTL_VER}) satisfait la version minimale (${REQUIRED_VER})."
+    ((PASS_COUNT++))
+  else
+    error "kubectl (${KUBECTL_VER}) est inférieur à ${REQUIRED_VER}."
+    ((FAIL_COUNT++))
+  fi
 fi
 
 # Test 2 : statut du service kubelet
 info "Test 2 : statut du service kubelet"
-...
+if systemctl is-active --quiet kubelet; then
+  success "Service kubelet actif."
+  ((PASS_COUNT++))
+else
+  error "Service kubelet inactif."
+  ((FAIL_COUNT++))
+fi
+
+# Test 3 : port Kubernetes standard (6443) ouvert
+info "Test 3 : vérifier que le port 6443 est à l'écoute"
+if ss -tuln | grep -q ":6443"; then
+  success "Port 6443 en écoute."
+  ((PASS_COUNT++))
+else
+  warning "Port 6443 non trouvé ouvert."
+  ((FAIL_COUNT++))
+fi
+
+echo ""
+header "RÉSULTATS DES TESTS"
+info "Tests réussis : ${PASS_COUNT}"
+if [ "${FAIL_COUNT}" -gt 0 ]; then
+  warning "Tests échoués : ${FAIL_COUNT}"
+else
+  success "Aucun test en échec."
+fi
+echo ""
+
 # ─── ENVOI DU LOG ──────────────────────────────────────────────────────────────
 header "ENVOI DU LOG D'INSTALLATION"
 
