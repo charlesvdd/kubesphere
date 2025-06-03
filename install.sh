@@ -102,10 +102,10 @@ header "VÉRIFICATIONS POST-INSTALLATION"
 PASS_COUNT=0
 FAIL_COUNT=0
 
-# Test 1 : version minimale de kubectl
+# Test 1 : vérifier que kubectl ≥ 1.20.0
 info "Test 1 : vérifier que kubectl ≥ 1.20.0"
 INSTALLED_VER_RAW=$(kubectl version --client --short 2>/dev/null | head -n1 | awk '{print $3}')
-# Par ex. INSTALLED_VER_RAW="v1.33.1"
+# par ex. INSTALLED_VER_RAW="v1.33.1"
 KUBECTL_VER="${INSTALLED_VER_RAW#v}"
 REQUIRED_VER="1.20.0"
 if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
