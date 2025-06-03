@@ -8,9 +8,6 @@ Kubernetes permet de gérer des clusters d'hôtes exécutant des conteneurs Dock
 4. **Gestion des services** : Il offre des mécanismes de découverte de services et d'équilibrage de charge pour les applications conteneurisées.
 5. **Gestion des configurations et des secrets** : Kubernetes permet de gérer les configurations des applications et les informations sensibles de manière sécurisée.
 
-![console.png](attachment:eef28140-5067-4e89-bf48-059edb1c0d4f:console.png)
-
-![project.png](attachment:89bfe3ca-48c9-4e91-84e5-adfea0c0db19:project.png)
 
 KubeSphere, d'autre part, est une plateforme de gestion de conteneurs open source construite sur Kubernetes. Elle fournit une interface utilisateur graphique et un ensemble d'outils pour faciliter la gestion des clusters Kubernetes. Voici quelques caractéristiques de KubeSphere :
 
