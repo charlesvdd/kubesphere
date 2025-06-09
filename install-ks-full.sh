@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-### Variables à ajuster ###
+### Variables ###
 K3S_VERSION="v1.33.1+k3s1"
 KS_VERSION="v3.4.1"
 GIT_REPO="git@github.com:charlesvdd/kubesphere.git"
@@ -16,30 +16,28 @@ function title() {
 }
 
 function pre_checks() {
-  title "VÉRIFICATIONS PRÉALABLES"
+  title "PRÉ-VERIFICATIONS"
   echo -n "→ OS: " && lsb_release -ds
   MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
-  echo "→ RAM: ${MEM_GB} Go"
-  (( MEM_GB < 8 )) && echo "⚠️  Moins de 8 Go de RAM."
+  echo "→ RAM: ${MEM_GB}G"
+  (( MEM_GB < 8 )) && echo "⚠️  <8G RAM."
   swapon --show | grep -q '/swapfile' && echo "→ Swap: ok" || echo "⚠️  Pas de swap."
 }
 
 function deploy() {
   title "DÉPLOIEMENT"
-
-  # Clone ou pull
+  # Git clone/pull
   if [ ! -d "$WORKDIR/.git" ]; then
-    echo "→ Clonage SSH de $GIT_REPO"
+    echo "→ Clonage SSH $GIT_REPO"
     git clone --branch "$GIT_BRANCH" "$GIT_REPO" "$WORKDIR"
   else
-    echo "→ Mise à jour du dépôt"
-    cd "$WORKDIR"
-    git fetch origin "$GIT_BRANCH"
-    git reset --hard "origin/$GIT_BRANCH"
+    echo "→ Update dépôt"
+    cd "$WORKDIR" && git fetch origin "$GIT_BRANCH" && git reset --hard "origin/$GIT_BRANCH"
   fi
   cd "$WORKDIR"
 
-  echo "→ Mise à jour apt + dépendances"
+  # Update OS
+  echo "→ apt update + dependances"
   sudo apt update && sudo apt upgrade -y
   sudo apt install -y curl apt-transport-https vim git ca-certificates lsb-release
 
@@ -60,10 +58,15 @@ function deploy() {
   sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
   sudo systemctl restart containerd && sudo systemctl enable containerd
 
-  # k3s
+  # k3s install
   echo "→ Installation k3s ${K3S_VERSION}"
   curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" sh -s - \
     --disable traefik --kubelet-arg="eviction-hard=imagefs.available<15%,nodefs.available<15%>"
+
+  # Wait for k3s service
+  echo "→ Attente service k3s actif"
+  until sudo systemctl is-active --quiet k3s; do sleep 5; echo "..."; done
+  echo "k3s actif"
 
   # kubectl config
   echo "→ Configuration kubectl"
@@ -72,20 +75,15 @@ function deploy() {
   sudo chown $(id -u):$(id -g) $HOME/.kube/config
   export KUBECONFIG=$HOME/.kube/config
 
-  # Attente du cluster Ready
-  title "ATTENTE Kubernetes Ready"
-  until kubectl get nodes &> /dev/null; do
-    echo "→ Waiting for Kubernetes API..."; sleep 5
-  done
-  until kubectl get nodes | grep -w 'Ready'; do
-    echo "→ Waiting for node Ready status..."; sleep 5
-  done
-  echo "→ Kubernetes API is ready"
+  # Wait Kubernetes API
+  title "ATTENTE K8s API"
+  until kubectl get nodes &> /dev/null; do sleep 5; echo "Waiting for K8s API..."; done
+  until kubectl get nodes | grep -w 'Ready'; do sleep 5; echo "Waiting for node Ready..."; done
+  echo "Kubernetes Ready"
 
-  # Manifest preparation
-  echo "→ Préparation du manifest"
+  # Prepare manifest
+  echo "→ Préparation manifest"
   VPS_IP=$(hostname -I | awk '{print $1}')
-  echo "   IP détectée: $VPS_IP"
   cp cluster-configuration.yaml cluster-configuration-patched.yaml
   sed -i -E \
     -e "s#(endpointIps:) .*#\1 $VPS_IP#" \
@@ -93,7 +91,7 @@ function deploy() {
     cluster-configuration-patched.yaml
 
   git config user.email "autodeploy@kubesphere.local"
-  git config user.name "KubeSphere AutoDeploy Bot"
+  git config user.name "KubeSphere Bot"
   if ! diff -q cluster-configuration.yaml cluster-configuration-patched.yaml >/dev/null; then
     title "COMMIT & PUSH"
     mv cluster-configuration-patched.yaml cluster-configuration.yaml
@@ -101,11 +99,11 @@ function deploy() {
     git commit -m "Update config with IP $VPS_IP"
     git push origin "$GIT_BRANCH"
   else
-    echo "→ Pas de changements dans manifest"
+    echo "→ Manifest unchanged"
   fi
 
   # Deploy KubeSphere
-  echo "→ Déploiement KubeSphere (désactivation validation OpenAPI)"
+  echo "→ Deploy KubeSphere (--validate=false)"
   kubectl apply --validate=false -f https://github.com/kubesphere/ks-installer/releases/download/${KS_VERSION}/kubesphere-installer.yaml
   kubectl apply -f cluster-configuration.yaml
 }
@@ -113,17 +111,16 @@ function deploy() {
 function evaluation() {
   title "AUTO-ÉVALUATION"
   end=$((SECONDS + 900))
-  while :; do
-    if ! kubectl get pods -n kubesphere-system --no-headers | grep -E 'ContainerCreating|Pending|CrashLoopBackOff'; then break; fi
+  while kubectl get pods -n kubesphere-system --no-headers | grep -E 'ContainerCreating|Pending|CrashLoopBackOff'; do
     (( SECONDS > end )) && { echo "⚠️ Timeout pods"; kubectl get pods -n kubesphere-system; exit 1; }
     sleep 10
   done
-  echo "→ Pods Running ✅"
+  echo "→ Pods Running"
   kubectl get pods -n kubesphere-system -o wide
-  echo "→ Nodes Ready"; kubectl get nodes
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:30880)
+  echo "→ Nodes Ready" && kubectl get nodes
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$(hostname -I | awk '{print $1}'):30880)
   [ "$HTTP_CODE" = "200" ] && echo "UI OK" || echo "UI HTTP $HTTP_CODE"
-  echo -e "\n🎉 Terminé"
+  echo -e "\n🎉 Deploy terminé"
 }
 
 # MAIN
