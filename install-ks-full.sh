@@ -4,15 +4,16 @@ set -euo pipefail
 ### Variables à ajuster ###
 K3S_VERSION="v1.33.1+k3s1"
 KS_VERSION="v3.4.1"
-STORAGE_CLASS=""  # ou votre StorageClass
+# Utiliser l'URL HTTPS pour éviter les problèmes de clé SSH
+GIT_REPO="https://github.com/charlesvdd/kubesphere.git"
+STORAGE_CLASS=""  # ou ton StorageClass
 SWAP_SIZE_GB=4
-GIT_REPO="git@github.com:charlesvdd/kubesphere.git"
 WORKDIR="$HOME/kubesphere"
 ###############################################################################
 
 echo -e "\n🚀 Déploiement K3s + KubeSphere ${KS_VERSION} Full Package\n"
 
-# Clone ou pull du repo
+# Clone ou pull du repo en HTTPS
 if [ ! -d "$WORKDIR/.git" ]; then
   echo "➡️ Clonage du dépôt $GIT_REPO dans $WORKDIR"
   git clone "$GIT_REPO" "$WORKDIR"
@@ -36,6 +37,8 @@ if ! swapon --show | grep -q '/swapfile'; then
   sudo mkswap /swapfile
   sudo swapon /swapfile
   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+else
+  echo "→ Swap déjà configuré, on passe."
 fi
 
 # 3️⃣ Installation de containerd
@@ -73,7 +76,7 @@ sed -i -E "
 " cluster-configuration.yaml
 
 # 7️⃣ Commit & push manifest
-if [ -n "$(git status --porcelain cluster-configuration.yaml)" ]; then
+if git status --porcelain cluster-configuration.yaml | grep -q .; then
   echo "7️⃣ Commit & push cluster-configuration.yaml"
   git add cluster-configuration.yaml
   git commit -m "Add KubeSphere cluster config with IP $VPS_IP"
@@ -89,4 +92,4 @@ kubectl apply -f cluster-configuration.yaml
 
 echo -e "\n✅ Déploiement lancé. Suivez les logs :"
 echo "kubectl logs -n kubesphere-system \$(kubectl get pod -n kubesphere-system -l app=ks-install -o jsonpath='{.items[0].metadata.name}') -f"
-echo "Accès UI : http://\${VPS_IP}:30880 (admin / P@88w0rd)"
+echo "Accès UI : http://${VPS_IP}:30880 (user: admin / pwd: P@88w0rd)"
