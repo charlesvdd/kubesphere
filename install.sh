@@ -18,6 +18,11 @@ log() {
   echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" | tee -a "${LOG_FILE:-install.log}"
 }
 
+# Vérification et correction des problèmes de dpkg
+log "Checking and fixing dpkg issues"
+sudo dpkg --configure -a
+sudo apt-get install -f -y
+
 log "Retrieving latest stable Kubernetes version"
 LATEST_K8S_VERSION=$(curl -fsSL https://storage.googleapis.com/kubernetes-release/release/stable.txt)
 LATEST_K8S_VERSION="${LATEST_K8S_VERSION#v}"
