@@ -16,8 +16,8 @@ function title() {
 }
 
 function pre_checks() {
-  title "PRÉ-VERIFICATIONS"
-  echo -n "→ OS: " && lsb_release -ds
+  title "PRÉ-VÉRIFICATIONS"
+  echo -n "→ OS: " && lsb_release -ds || echo "lsb_release non trouvé"
   MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
   echo "→ RAM: ${MEM_GB}G"
   (( MEM_GB < 8 )) && echo "⚠️  <8G RAM."
@@ -30,7 +30,7 @@ function deploy() {
   # Préparer le dossier de travail
   echo "→ Préparation du répertoire ${WORKDIR}"
   sudo mkdir -p "${WORKDIR}"
-  sudo chown $(id -u):$(id -g) "${WORKDIR}"
+  sudo chown "$(id -u):$(id -g)" "${WORKDIR}"
 
   # Git clone/pull en SSH
   if [ ! -d "${WORKDIR}/.git" ]; then
@@ -50,7 +50,7 @@ function deploy() {
   # Swap
   if ! swapon --show | grep -q '/swapfile'; then
     echo "→ Création swap ${SWAP_SIZE_GB}G"
-    sudo fallocate -l ${SWAP_SIZE_GB}G /swapfile
+    sudo fallocate -l "${SWAP_SIZE_GB}G" /swapfile
     sudo chmod 600 /swapfile
     sudo mkswap /swapfile
     sudo swapon /swapfile
@@ -66,25 +66,33 @@ function deploy() {
 
   # k3s install
   echo "→ Installation k3s ${K3S_VERSION}"
-  curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" sh -s - \
-    --disable traefik
+  curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" sh -s - --disable traefik
 
   # Wait for k3s service
   echo "→ Attente service k3s actif"
-  until sudo systemctl is-active --quiet k3s; do sleep 5; echo "..."; done
+  until sudo systemctl is-active --quiet k3s; do
+    sleep 5
+    echo "En attente de k3s..."
+  done
   echo "k3s actif"
 
   # kubectl config
   echo "→ Configuration kubectl"
-  mkdir -p $HOME/.kube
-  sudo cp /etc/rancher/k3s/k3s.yaml $HOME/.kube/config
-  sudo chown $(id -u):$(id -g) $HOME/.kube/config
-  export KUBECONFIG=$HOME/.kube/config
+  mkdir -p "$HOME/.kube"
+  sudo cp /etc/rancher/k3s/k3s.yaml "$HOME/.kube/config"
+  sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+  export KUBECONFIG="$HOME/.kube/config"
 
   # Wait Kubernetes API
   title "ATTENTE K8s API"
-  until kubectl get nodes &> /dev/null; do sleep 5; echo "Waiting for K8s API..."; done
-  until kubectl get nodes | grep -w 'Ready'; do sleep 5; echo "Waiting for node Ready..."; done
+  until kubectl get nodes &> /dev/null; do
+    sleep 5
+    echo "En attente de l'API K8s..."
+  done
+  until kubectl get nodes | grep -w 'Ready'; do
+    sleep 5
+    echo "En attente que le nœud soit prêt..."
+  done
   echo "Kubernetes Ready"
 
   # Prepare manifest
@@ -105,12 +113,12 @@ function deploy() {
     git commit -m "Update config with IP $VPS_IP"
     git push origin "${GIT_BRANCH}"
   else
-    echo "→ Manifest unchanged"
+    echo "→ Manifest inchangé"
   fi
 
   # Deploy KubeSphere
-  echo "→ Deploy KubeSphere (--validate=false)"
-  kubectl apply --validate=false -f https://github.com/kubesphere/ks-installer/releases/download/${KS_VERSION}/kubesphere-installer.yaml
+  echo "→ Déploiement KubeSphere (--validate=false)"
+  kubectl apply --validate=false -f "https://github.com/kubesphere/ks-installer/releases/download/${KS_VERSION}/kubesphere-installer.yaml"
   kubectl apply -f cluster-configuration.yaml
 }
 
@@ -118,15 +126,23 @@ function evaluation() {
   title "AUTO-ÉVALUATION"
   end=$((SECONDS + 900))
   while kubectl get pods -n kubesphere-system --no-headers | grep -E 'ContainerCreating|Pending|CrashLoopBackOff'; do
-    (( SECONDS > end )) && { echo "⚠️ Timeout pods"; kubectl get pods -n kubesphere-system; exit 1; }
+    if (( SECONDS > end )); then
+      echo "⚠️ Timeout pods"
+      kubectl get pods -n kubesphere-system
+      exit 1
+    fi
     sleep 10
   done
   echo "→ Pods Running"
   kubectl get pods -n kubesphere-system -o wide
   echo "→ Nodes Ready" && kubectl get nodes
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:30880)
-  [ "$HTTP_CODE" = "200" ] && echo "UI OK" || echo "UI HTTP $HTTP_CODE"
-  echo -e "\n🎉 Deploy terminé"
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://$VPS_IP:30880")
+  if [ "$HTTP_CODE" = "200" ]; then
+    echo "UI OK"
+  else
+    echo "UI HTTP $HTTP_CODE"
+  fi
+  echo -e "\n🎉 Déploiement terminé"
 }
 
 # MAIN
