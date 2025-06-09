@@ -1,0 +1,55 @@
+apiVersion: installer.kubesphere.io/v1alpha1
+kind: ClusterConfiguration
+metadata:
+  name: ks-installer
+  namespace: kubesphere-system
+spec:
+  local_registry: ""               # laisser vide ou préciser ton registry local
+  persistence:
+    storageClass: ""              # définir un StorageClass si nécessaire
+  authentication:
+    jwtSecret: ""                 # personnaliser si tu as un secret JWT
+  etcd:
+    monitoring: true
+    endpointIps: "<VPS_IP>"       # le script remplace automatiquement par l'IP détectée
+    port: 2379
+    tlsEnable: true
+  common:
+    core:
+      console:
+        enableMultiLogin: true
+        port: 30880
+        type: NodePort
+  alerting:
+    enabled: true
+  auditing:
+    enabled: true
+  devops:
+    enabled: true
+  events:
+    enabled: true
+  logging:
+    enabled: true
+    logsidecar:
+      enabled: true
+      replicas: 1
+  metrics_server:
+    enabled: true
+  monitoring:
+    storageClass: ""
+    prometheusMemoryRequest: 400Mi
+    prometheusVolumeSize: 20Gi
+    grafana:
+      enabled: true
+  multicluster:
+    clusterRole: host
+  network:
+    networkpolicy:
+      enabled: true
+  notification:
+    enabled: true
+  openpitrix:
+    store:
+      enabled: true
+  servicemesh:
+    enabled: true
