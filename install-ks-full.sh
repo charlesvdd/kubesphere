@@ -18,15 +18,12 @@ function title() {
 # 0️⃣ Pré-vérifications
 function pre_checks() {
   title "VÉRIFICATIONS PRÉALABLES"
-  # OS
   echo -n "→ OS: " && lsb_release -ds
-  # Mémoire
   MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
   echo "→ RAM installée: ${MEM_GB} Go"
   if (( MEM_GB < 8 )); then
-    echo "⚠️  Moins de 8 Go RAM, performance réduite."
+    echo "⚠️  Moins de 8 Go de RAM, performance réduite."
   fi
-  # Swap
   if swapon --show | grep -q '/swapfile'; then
     echo "→ Swap détecté: ok"
   else
@@ -97,8 +94,13 @@ function deploy() {
     s#(storageClass:) .*#\1 \"${STORAGE_CLASS}\"#g
   " cluster-configuration.yaml
 
+  # Initialisation config Git locale pour commit
+  git config user.email "autodeploy@kubesphere.local"
+  git config user.name "KubeSphere AutoDeploy Bot"
+
   # Commit & push
   if git status --porcelain cluster-configuration.yaml | grep -q .; then
+    title "COMMIT & PUSH"
     git add cluster-configuration.yaml
     git commit -m "Add KubeSphere config with IP $VPS_IP"
     git push origin main
