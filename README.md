@@ -20,15 +20,22 @@ This repository provides an `install.sh` script that automates the deployment of
 ## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/k8s-kubesphere-installer.git
-cd k8s-kubesphere-installer
+# Cloner la branche install du dépôt
+git clone --branch install https://github.com/charlesvdd/kubesphere.git
+cd kubesphere
 
-# Run with defaults (latest K8s + KubeSphere v3.5.0)
+# Rendre le script exécutable
+chmod +x install.sh
+
+# Lancer l’installation « minimal » (dernier K8s + KubeSphere v3.5.0)
 ./install.sh
 
-# Or specify versions manually
-./install.sh 1.27.4 v3.6.1
+# Ou en « full » (avec tous les plugins) :
+./install.sh full
+
+# Ou en spécifiant des versions :
+./install.sh 1.27.4 v3.6.1 full
+
 ```
 
 ---
