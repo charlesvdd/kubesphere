@@ -37,7 +37,7 @@ apt-get install -y kubeadm=${K8S_VERSION} kubelet=${K8S_VERSION} kubectl=${K8S_V
 echo "Locking package versions..."
 apt-mark hold kubeadm kubelet kubectl
 
-# ================= 3. INITIALIZE CONTROL PLAINECHO =================
+# ================= 3. INITIALIZE CONTROL PLANE =================
 echo "Initializing Kubernetes control plane..."
 kubeadm init \
   --kubernetes-version=$(echo ${K8S_VERSION} | sed 's/-00//') \
@@ -45,6 +45,13 @@ kubeadm init \
 
 echo "Setting up kubeconfig for root user..."
 export KUBECONFIG=/etc/kubernetes/admin.conf
+
+# Stream kube-system events and pod status
+echo "Streaming kube-system pods and events (in background)..."
+kubectl get pods -n kube-system --watch &
+kubectl get events -n kube-system --watch &
+STREAM_PIDS+=($!)
+STREAM_PIDS+=($!)
 
 # ================= 4. INSTALL NETWORK PLUGIN =================
 echo "Deploying Calico network plugin..."
@@ -54,10 +61,23 @@ kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 echo "Deploying KubeSphere ${KUBESPHERE_VERSION}..."
 kubectl apply -f https://github.com/kubesphere/kubesphere/releases/download/${KUBESPHERE_VERSION}/kubesphere-installer.yaml
 
+# Stream KubeSphere logs
+echo "Streaming KubeSphere operator logs (in background)..."
+kubectl logs -n kubesphere-system -l app=kubesphere-operator --follow &
+STREAM_PIDS+=($!)
+
 # ================= 6. VERIFICATION =================
-echo "Waiting for KubeSphere pods to be ready (timeout: 10 minutes)..."
+echo "Waiting for all KubeSphere pods to be ready (timeout: 10 minutes)..."
+# Wait and periodically check status
 kubectl -n kubesphere-system wait --for=condition=Ready pods --all --timeout=10m
 
+# Cleanup background watchers
+echo "Stopping log streams..."
+for pid in "${STREAM_PIDS[@]}"; do
+  kill $pid 2>/dev/null || true
+done
+
+# Final message
 echo "Installation complete!"
 echo "To access the KubeSphere console, run:"
 echo "  kubectl get svc -n kubesphere-system | grep kubesphere-console"
