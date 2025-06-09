@@ -41,6 +41,12 @@ log "Installing containerd and tools"
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
+# Ajout du dépôt Kubernetes
+log "Ajout du dépôt Kubernetes"
+sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
+
 # Installation de kubectl
 log "Installation de kubectl"
 sudo apt-get install -y kubectl
