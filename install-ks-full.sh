@@ -8,7 +8,7 @@ GIT_REPO="git@github.com:charlesvdd/kubesphere.git"
 GIT_BRANCH="master"
 STORAGE_CLASS=""
 SWAP_SIZE_GB=4
-WORKDIR="$HOME/kubesphere"
+WORKDIR="/opt/kubesphere"
 ###############################################################################
 
 function title() {
@@ -26,18 +26,24 @@ function pre_checks() {
 
 function deploy() {
   title "DÉPLOIEMENT"
-  # Git clone/pull
-  if [ ! -d "$WORKDIR/.git" ]; then
-    echo "→ Clonage SSH $GIT_REPO"
-    git clone --branch "$GIT_BRANCH" "$GIT_REPO" "$WORKDIR"
+
+  # Préparer le dossier de travail
+  echo "→ Préparation du répertoire ${WORKDIR}"
+  sudo mkdir -p "${WORKDIR}"
+  sudo chown $(id -u):$(id -g) "${WORKDIR}"
+
+  # Git clone/pull en SSH
+  if [ ! -d "${WORKDIR}/.git" ]; then
+    echo "→ Clonage SSH de ${GIT_REPO} dans ${WORKDIR}"
+    git clone --branch "${GIT_BRANCH}" "${GIT_REPO}" "${WORKDIR}"
   else
-    echo "→ Update dépôt"
-    cd "$WORKDIR" && git fetch origin "$GIT_BRANCH" && git reset --hard "origin/$GIT_BRANCH"
+    echo "→ Mise à jour du dépôt dans ${WORKDIR}"
+    cd "${WORKDIR}" && git fetch origin "${GIT_BRANCH}" && git reset --hard "origin/${GIT_BRANCH}"
   fi
-  cd "$WORKDIR"
+  cd "${WORKDIR}"
 
   # Update OS
-  echo "→ apt update + dependances"
+  echo "→ apt update + dépendances"
   sudo apt update && sudo apt upgrade -y
   sudo apt install -y curl apt-transport-https vim git ca-certificates lsb-release
 
@@ -61,7 +67,7 @@ function deploy() {
   # k3s install
   echo "→ Installation k3s ${K3S_VERSION}"
   curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" sh -s - \
-    --disable traefik --kubelet-arg="eviction-hard=imagefs.available<15%,nodefs.available<15%>"
+    --disable traefik
 
   # Wait for k3s service
   echo "→ Attente service k3s actif"
@@ -97,7 +103,7 @@ function deploy() {
     mv cluster-configuration-patched.yaml cluster-configuration.yaml
     git add cluster-configuration.yaml
     git commit -m "Update config with IP $VPS_IP"
-    git push origin "$GIT_BRANCH"
+    git push origin "${GIT_BRANCH}"
   else
     echo "→ Manifest unchanged"
   fi
@@ -118,7 +124,7 @@ function evaluation() {
   echo "→ Pods Running"
   kubectl get pods -n kubesphere-system -o wide
   echo "→ Nodes Ready" && kubectl get nodes
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$(hostname -I | awk '{print $1}'):30880)
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$VPS_IP:30880)
   [ "$HTTP_CODE" = "200" ] && echo "UI OK" || echo "UI HTTP $HTTP_CODE"
   echo -e "\n🎉 Deploy terminé"
 }
