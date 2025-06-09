@@ -1,60 +1,87 @@
-Kubernetes est un système open source conçu pour automatiser le déploiement, la mise à l'échelle et la gestion des applications conteneurisées. Il a été initialement développé par Google et est maintenant maintenu par la Cloud Native Computing Foundation. 
+# KubeSphere Kickstarter
 
-Kubernetes permet de gérer des clusters d'hôtes exécutant des conteneurs Docker, facilitant ainsi la gestion des applications distribuées et des microservices. Voici quelques caractéristiques clés de Kubernetes :
+This repository provides a one-stop script to quickly set up a vanilla Kubernetes cluster (v1.29.13) and install KubeSphere v4.1.3 on Ubuntu.
 
-1. **Orchestration de conteneurs** : Kubernetes aide à orchestrer les conteneurs sur plusieurs hôtes, en s'assurant que les applications fonctionnent comme prévu.
-2. **Mise à l'échelle automatique** : Il peut automatiquement mettre à l'échelle les applications en fonction de l'utilisation des ressources ou d'autres métriques.
-3. **Auto-réparation** : Kubernetes redémarre les conteneurs qui échouent, remplace les conteneurs, tue les conteneurs qui ne répondent pas aux contrôles de santé définis par l'utilisateur, et ne les annonce pas aux clients tant qu'ils ne sont pas prêts à les servir.
-4. **Gestion des services** : Il offre des mécanismes de découverte de services et d'équilibrage de charge pour les applications conteneurisées.
-5. **Gestion des configurations et des secrets** : Kubernetes permet de gérer les configurations des applications et les informations sensibles de manière sécurisée.
+## Repository Structure
 
+- **kubesphere-kickstarter.sh**: Main installation script. Must be run as root.
 
-KubeSphere, d'autre part, est une plateforme de gestion de conteneurs open source construite sur Kubernetes. Elle fournit une interface utilisateur graphique et un ensemble d'outils pour faciliter la gestion des clusters Kubernetes. Voici quelques caractéristiques de KubeSphere :
+## Prerequisites
 
-1. **Interface utilisateur intuitive** : KubeSphere offre une interface utilisateur graphique qui simplifie la gestion des ressources Kubernetes.
-2. **Gestion multi-clusters** : Elle permet de gérer plusieurs clusters Kubernetes à partir d'une seule interface.
-3. **Intégration d'outils DevOps** : KubeSphere intègre divers outils DevOps pour le CI/CD, la surveillance, la journalisation, et plus encore.
-4. **Gestion des applications** : Elle fournit des outils pour le déploiement, la mise à l'échelle et la gestion des applications sur Kubernetes.
-5. **Sécurité et gestion des accès** : KubeSphere offre des fonctionnalités avancées pour la gestion des accès et la sécurité des applications.
-6. 
+- Ubuntu 20.04+ or compatible Debian-based distribution
+- Minimum 2 CPU cores, 4 GB RAM
+- Internet connectivity to download packages and manifests
+- Sudo or root privileges
 
-https://youtu.be/YxZ1YUv0CYs?si=QiiiDbkbYaFnuBpJ
+## Supported Versions
 
-Ensemble, Kubernetes et KubeSphere offrent une solution puissante pour la gestion des applications conteneurisées, rendant plus accessible la complexité de Kubernetes grâce à une interface utilisateur et des outils supplémentaires.
+- **Kubernetes**: upstream v1.29.13
+- **KubeSphere**: v4.1.3
+- **Network Plugin**: Calico (default). You may replace with Flannel, Weave, etc.
 
-## Github distribution
+## Usage
 
-[GitHub - kubesphere/kubesphere: The container platform tailored for Kubernetes multi-cloud, datacenter, and edge management ⎈ 🖥 ☁️](https://github.com/kubesphere/kubesphere)
+1. **Clone the repository**
 
-### Fonctionnalités
+   ```bash
+   git clone https://github.com/charlesvdd/kubesphere.git
+   cd kubesphere
+   ```
 
-1. **Orchestration de conteneurs** : Gestion automatisée du déploiement, de la mise à l'échelle et de l'exploitation des applications conteneurisées.
-2. **Service Discovery et Load Balancing** : Kubernetes peut exposer un conteneur en utilisant le nom DNS ou sa propre adresse IP. S'il y a beaucoup de trafic, Kubernetes peut équilibrer la charge et distribuer le trafic réseau pour que le déploiement soit stable.
-3. **Orchestration de stockage** : Montage automatique d'un système de stockage choisi, tel que des stockage locaux, des fournisseurs de cloud public, etc.
-4. **Mise à l'échelle automatique** : Mise à l'échelle des applications en fonction de leur utilisation ou d'autres métriques.
-5. **Auto-réparation** : Redémarrage des conteneurs défaillants, remplacement et destruction des conteneurs en cas de défaillance, et gestion des conteneurs en fonction des contrôles de santé définis par l'utilisateur.
-6. **Gestion des configurations et des secrets** : Gestion des informations sensibles, telles que les mots de passe, les tokens OAuth, et les clés SSH.
-7. **Gestion des déploiements et des rollbacks** : Kubernetes permet de déployer des modifications de manière progressive et de revenir en arrière en cas de problème.
+2. **Make the script executable**
 
-### Avantages
+   ```bash
+   chmod +x kubesphere-kickstarter.sh
+   ```
 
-- **Portabilité** : Fonctionne avec différents environnements cloud et sur site.
-- **Extensibilité** : Peut être étendu avec une grande variété d'outils et de plugins.
-- **Communauté et support** : Large communauté et support étendu de la part des principaux fournisseurs de cloud.
-- **Efficacité des ressources** : Optimisation de l'utilisation des ressources grâce à l'orchestration intelligente des conteneurs.
+3. **Run the script as root**
 
-## Modelisartion
+   ```bash
+   sudo ./kubesphere-kickstarter.sh
+   ```
 
-![architecture.png](attachment:9b4d6aee-9ceb-43f3-8f23-3f0529b7928b:architecture.png)
+   The script will:
+   - Check for root privileges
+   - Install kubeadm, kubelet, and kubectl v1.29.13
+   - Initialize the control plane with a Calico network (CIDR 192.168.0.0/16)
+   - Deploy KubeSphere v4.1.3
+   - Wait up to 10 minutes for all KubeSphere pods to be ready
 
-### KubeSphere
+4. **Verify installation**
 
-### Fonctionnalités
+   ```bash
+   kubectl get nodes             # Check cluster nodes
+   kubectl get pods -n kubesphere-system  # Check KubeSphere pods
+   kubectl get svc -n kubesphere-system | grep kubesphere-console
+   ```
 
-1. **Interface utilisateur graphique** : Interface intuitive pour la gestion des clusters Kubernetes.
-2. **Gestion multi-clusters** : Capacité à gérer plusieurs clusters Kubernetes à partir d'une seule interface.
-3. **Intégration DevOps** : Outils intégrés pour le CI/CD, la surveillance, la journalisation, et plus encore.
-4. **Gestion des applications** : Outils pour le déploiement, la mise à l'échelle et la gestion des applications sur Kubernetes.
-5. **Sécurité et gestion des accès** : Fonctionnalités avancées pour la gestion des accès et la sécurité des applications.
-6. **Observabilité** : Tableaux de bord et outils de surveillance pour suivre l'état et les performances des applications et des clusters.
-7. **Gestion des ressources** : Outils pour gérer les ressources de calcul, de stockage et de réseau.
+5. **Access the KubeSphere Console**
+
+   Forward the service port or expose via LoadBalancer/Ingress:
+
+   ```bash
+   kubectl port-forward -n kubesphere-system svc/kubesphere-console 30880:80
+   ```
+
+   Then open your browser at <http://localhost:30880>.
+
+## Customization
+
+- **Change Kubernetes version**: edit the `K8S_VERSION` variable in the script (must stay within v1.21–v1.30).
+- **Use different network plugin**: replace the Calico manifest URL in the script (step 4).
+- **Modify Pod CIDR**: adjust the `POD_NETWORK_CIDR` variable.
+
+## Troubleshooting
+
+- If the script fails to find packages, ensure the Google GPG key and APT repo were added correctly.
+- Check logs of failing pods:
+
+  ```bash
+  kubectl -n kubesphere-system logs -l app=kubesphere-console
+  ```
+
+- For network issues, verify IP ranges and networking add-on status.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
