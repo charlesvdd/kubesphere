@@ -1,362 +1,100 @@
 #!/usr/bin/env bash
-###############################################################################
-#    ____        _    ____  _                   _
-#   / ___| _   _| | _|  _ \| | _____   _____  _| |_ ___  _ __
-#   \___ \| | | | |/ / |_) | |/ _ \ \ / / _ \| | __/ _ \| '_ \
-#    ___) | |_| |   <|  __/| |  __/\ V / (_) | | || (_) | | | |
-#   |____/ \__,_|_|\_\_|   |_|\___| \_/ \___/|_|\__\___/|_| |_|
-#
-#   Script d’installation & vérification (Nettoyage intégral + Snap + kubeadm init)
-#   Dépôt : charlesvdd/kubesphere (branche : install)
-###############################################################################
 
-# ─── COULEURS ANSI ───────────────────────────────────────────────────────────
-GREEN="\e[32m"
-YELLOW="\e[33m"
-RED="\e[31m"
-BLUE="\e[34m"
-CYAN="\e[36m"
-BOLD="\e[1m"
-RESET="\e[0m"
+# ----------------------------------------------------------------------------
+# Script d'installation automatisée de Kubernetes + KubeSphere sur Ubuntu VPS
+# Récupère dynamiquement la dernière version stable de Kubernetes si non précisée
+# Usage : ./install.sh [K8S_VERSION] [KUBESPHERE_VERSION]
+# Exemple : ./install.sh 1.27.4 v3.6.1
+# Licence : MIT
+# ----------------------------------------------------------------------------
 
-# ─── FONCTIONS UTILITAIRES ───────────────────────────────────────────────────
-function header() {
-  echo -e "${CYAN}${BOLD}================================================================${RESET}"
-  echo -e "${CYAN}${BOLD}  $1${RESET}"
-  echo -e "${CYAN}${BOLD}================================================================${RESET}"
-}
-
-function info() {
-  echo -e "${BLUE}[INFO]${RESET} $1"
-}
-
-function success() {
-  echo -e "${GREEN}[✔]${RESET} $1"
-}
-
-function warning() {
-  echo -e "${YELLOW}[!]${RESET} $1"
-}
-
-function error() {
-  echo -e "${RED}[✖]${RESET} $1"
-}
-
-# ─── DÉBUT DU SCRIPT ──────────────────────────────────────────────────────────
 set -euo pipefail
 
-LOGFILE="/tmp/kubesphere_install_$(date '+%Y%m%d_%H%M%S').log"
-exec > >(tee -a "${LOGFILE}") 2>&1
+# 0) Détection de la dernière version stable de Kubernetes
+log() {
+  echo "[\$(date +'%Y-%m-%dT%H:%M:%S%z')] \$*" | tee -a "${LOG_FILE:-install.log}"
+}
 
-header "DÉMARRAGE DU SCRIPT D'INSTALLATION"
-info "Date/Heure : $(date '+%Y-%m-%d %H:%M:%S')"
-echo ""
+log "Récupération de la dernière version stable de Kubernetes"
+LATEST_K8S_VERSION=$(curl -fsSL https://storage.googleapis.com/kubernetes-release/release/stable.txt)
+LATEST_K8S_VERSION="${LATEST_K8S_VERSION#v}"
 
-# ─── BLOC NETTOYAGE D’INSTALLATIONS EXISTANTES ─────────────────────────────────
-header "NETTOYAGE DES INSTALLATIONS KUBERNETES EXISTANTES"
+# 1) Variables de version (paramètres ou dernières versions)
+K8S_VERSION="${1:-${LATEST_K8S_VERSION}}"
+KUBESPHERE_VERSION="${2:-v3.5.0}"
+LOG_FILE="install-$(date +%Y%m%d%H%M%S).log"
 
-# 1) Arrêter, désactiver et purger kubelet apt (si présent)
-if dpkg -l | grep -q kubelet; then
-  info "Arrêt, désactivation et purge du service kubelet (APT)…"
-  sudo systemctl stop kubelet.service || true
-  sudo systemctl disable kubelet.service || true
-  sudo apt-get purge -y kubelet
-  success "Service kubelet (APT) arrêté et purgé."
-fi
-
-# 2) Désinstaller kubelet snap (si présent)
-if snap list | grep -q "^kubelet\s"; then
-  info "Désactivation et suppression du snap kubelet…"
-  sudo snap disable kubelet || true
-  sudo snap remove kubelet || true
-  success "Snap kubelet supprimé."
-fi
-
-# 3) Arrêter, désactiver et purger kubeadm apt (si présent)
-if dpkg -l | grep -q kubeadm; then
-  info "Arrêt, désactivation et purge de kubeadm (APT)…"
-  sudo systemctl stop kubelet.service || true
-  sudo systemctl disable kubelet.service || true
-  sudo apt-get purge -y kubeadm
-  success "kubeadm (APT) purgé."
-fi
-
-# 4) Désinstaller kubeadm snap (si présent)
-if snap list | grep -q "^kubeadm\s"; then
-  info "Suppression du snap kubeadm…"
-  sudo snap remove kubeadm || true
-  success "Snap kubeadm supprimé."
-fi
-
-# 5) Arrêter, désactiver et purger kubectl apt (si présent)
-if dpkg -l | grep -q kubectl; then
-  info "Purge de kubectl (APT)…"
-  sudo apt-get purge -y kubectl
-  success "kubectl (APT) purgé."
-fi
-
-# 6) Désinstaller kubectl snap (si présent)
-if snap list | grep -q "^kubectl\s"; then
-  info "Suppression du snap kubectl…"
-  sudo snap remove kubectl || true
-  success "Snap kubectl supprimé."
-fi
-
-# 7) Arrêter et supprimer MicroK8s (snap)
-if snap list | grep -q "^microk8s\s"; then
-  info "Arrêt et suppression de MicroK8s…"
-  sudo snap disable microk8s || true
-  sudo snap remove microk8s || true
-  sudo rm -rf /var/snap/microk8s /var/lib/microk8s /snap/microk8s
-  success "MicroK8s supprimé."
-fi
-
-# 8) Arrêter et supprimer k3s
-if systemctl list-units --full -all | grep -qE 'k3s.service|k3s-agent.service'; then
-  info "Arrêt et suppression de k3s…"
-  sudo systemctl stop k3s.service 2>/dev/null || true
-  sudo systemctl disable k3s.service 2>/dev/null || true
-  sudo rm -f /etc/systemd/system/k3s.service /etc/systemd/system/k3s-agent.service
-  sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s
-  sudo rm -f /usr/local/bin/k3s /usr/local/bin/k3s-agent
-  success "k3s supprimé."
-fi
-
-# 9) Libérer les ports 10250, 6443, 2379, 2380
-for PORT in 10250 6443 2379 2380; do
-  if sudo ss -tulpn | grep -q ":${PORT}"; then
-    PROC_PID=$(sudo lsof -t -i :"${PORT}" 2>/dev/null || true)
-    if [ -n "${PROC_PID}" ]; then
-      info "Libération du port ${PORT} (PID ${PROC_PID})…"
-      sudo kill -9 "${PROC_PID}" || true
-      success "Port ${PORT} libéré."
-    fi
-  fi
-done
-
-# 10) Supprimer files CNI et etcd résiduels
-info "Suppression des configurations CNI et etcd résiduelles…"
-sudo rm -rf /etc/kubernetes /var/lib/kubelet /var/lib/etcd /etc/cni/net.d /opt/cni /etc/calico /var/lib/calico /etc/flannel /var/lib/flannel ~/.kube
-success "Configurations résiduelles supprimées."
-
-# 11) Réinitialiser containerd si nécessaire
-if [ -f /etc/containerd/config.toml ]; then
-  info "Suppression de l’ancienne configuration containerd…"
-  sudo rm -f /etc/containerd/config.toml
-  success "Configuration containerd supprimée."
-fi
-
-echo ""
-success "Nettoyage complet terminé. Aucune installation Kubernetes résiduelle détectée."
-echo ""
-
-# ─── BLOC INSTALLATION DES DÉPENDANCES ────────────────────────────────────────
-header "INSTALLATION DES DÉPENDANCES"
-
-# 1) Vérifier/installer curl
-if ! command -v curl &>/dev/null; then
-  info "curl non trouvé → installation en cours..."
-  if sudo apt-get update && sudo apt-get install -y curl; then
-    success "curl installé avec succès."
-  else
-    error "Échec de l'installation de curl."
-    exit 1
-  fi
-else
-  success "curl déjà présent ($(curl --version | head -n1))."
-fi
-
-# 2) Vérifier/installer snapd
-if ! command -v snap &>/dev/null; then
-  info "snapd non trouvé → installation en cours..."
-  if sudo apt-get update && sudo apt-get install -y snapd; then
-    success "snapd installé avec succès."
-  else
-    error "Échec de l'installation de snapd."
-    exit 1
-  fi
-else
-  success "snapd déjà présent ($(snap version | head -n1))."
-fi
-
-# 3) Installer kubeadm, kubelet et kubectl via Snap en mode --classic
-header "INSTALLATION DES BINAIRES KUBERNETES VIA SNAP"
-SNAP_PKGS=("kubeadm" "kubelet" "kubectl")
-for PKG in "${SNAP_PKGS[@]}"; do
-  if ! snap list | grep -q "^${PKG} "; then
-    info "Installation de ${PKG} via snap..."
-    if sudo snap install "${PKG}" --classic; then
-      success "${PKG} installé via snap."
-    else
-      error "Échec de l'installation de ${PKG} via snap."
-      exit 1
-    fi
-  else
-    INST_VER=$(snap list | awk -v p="$PKG" '$1==p {print $2}')
-    success "${PKG} déjà installé (version ${INST_VER})."
-  fi
-done
-
-# 4) Vérifier les versions installées
-info "Vérification des versions des binaires Kubernetes"
-kubeadm version         # Exemple : "kubeadm version: v1.32.5"
-kubelet --version       # Exemple : "Client Version: v1.32.5"
-kubectl version --client  # Exemple : "Client Version: v1.32.5"
-success "kubeadm, kubelet, kubectl sont opérationnels."
-
-# ─── BLOC INSTALLATION ET CONFIGURATION DE CONTAINERD ─────────────────────────────
-header "INSTALLATION ET CONFIGURATION DE CONTAINERD"
-if ! command -v containerd &>/dev/null; then
-  info "containerd non trouvé → installation en cours..."
-  if sudo apt-get update && sudo apt-get install -y containerd; then
-    success "containerd installé."
-  else
-    error "Échec de l'installation de containerd."
-    exit 1
-  fi
-else
-  success "containerd déjà présent."
-fi
-
-info "Configuration de containerd (SystemdCgroup = true)…"
-sudo mkdir -p /etc/containerd
-sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-sudo systemctl daemon-reload
-sudo systemctl restart containerd
-sudo systemctl enable containerd
-success "containerd configuré et en service."
-
-echo ""
-
-# ─── BLOC INITIALISATION DU CLUSTER ───────────────────────────────────────────
-header "INITIALISATION DU CLUSTER KUBERNETES"
-
-# 1) Désactiver le swap (nécessaire pour Kubernetes)
-info "Désactivation du swap (temporaire)…"
+# 2) Pré-requis système
+log "Désactivation du swap"
 sudo swapoff -a
+sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
-# 2) Activer net.ipv4.ip_forward
-info "Activation du forwarding IPv4…"
-sudo sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-kube-forward.conf >/dev/null
-sudo sysctl --system >/dev/null
-success "Forwarding IPv4 activé."
+log "Chargement des modules réseau"
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+br_netfilter
+EOF
+sudo modprobe br_netfilter
 
-# 3) Supprimer tout résidu de kubelet avant init (stop, disable, remove snap)
-info "Arrêt, désactivation et suppression de kubelet avant init…"
-sudo systemctl stop kubelet.service     || true
-sudo systemctl disable kubelet.service  || true
-if snap list | grep -q "^kubelet\s"; then
-  sudo snap remove kubelet || true
-fi
-# Si un processus écoute encore sur 10250, le tuer
-if sudo ss -tulpn | grep -q ":10250"; then
-  PROC_PID=$(sudo lsof -t -i :10250)
-  [ -n "${PROC_PID}" ] && sudo kill -9 "${PROC_PID}" || true
-  success "Port 10250 libéré."
-fi
+log "Configuration sysctl pour Kubernetes"
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables  = 1
+net.ipv4.ip_forward                 = 1
+EOF
+sudo sysctl --system
 
-# 4) Initialiser le master avec kubeadm
-info "Initialisation du nœud master (kubeadm init)…"
-sudo kubeadm init \
-  --pod-network-cidr=10.244.0.0/16 \
-  --cri-socket /run/containerd/containerd.sock
+# 3) Installation des dépendances
+log "Installation de containerd/cri et outils nécessaires"
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
-# 5) Configurer kubectl pour root
-info "Configuration de kubectl pour l'utilisateur root…"
-sudo mkdir -p /root/.kube
-sudo cp -i /etc/kubernetes/admin.conf /root/.kube/config
-sudo chown root:root /root/.kube/config
-sudo chmod 600 /root/.kube/config
-success "kubectl configuré pour root."
+log "Ajout du dépôt Docker"
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y containerd.io
 
-# 6) Déployer le CNI (Calico recommandé en production)
-info "Déploiement du CNI Calico…"
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
-success "Manifest Calico appliqué."
+log "Configuration de containerd"
+sudo mkdir -p /etc/containerd
+sudo containerd config default | sudo tee /etc/containerd/config.toml
+sudo systemctl restart containerd
 
-# 7) Vérifier que le master passe en Ready
-info "Vérification de l'état du nœud master…"
-kubectl get nodes
-kubectl get pods -n kube-system
+# 4) Installation de Kubernetes
+log "Ajout du dépôt Kubernetes"
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" \
+  | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
 
-echo ""
+log "Installation kubelet kubeadm kubectl version ${K8S_VERSION}"
+sudo apt-get install -y kubelet="${K8S_VERSION}-00" kubeadm="${K8S_VERSION}-00" kubectl="${K8S_VERSION}-00"
+sudo apt-mark hold kubelet kubeadm kubectl
 
-# ─── BLOC SIMULATION D'INSTALLATION DE KUBESPHERE ───────────────────────────────
-header "INSTALLATION DE KUBESPHERE (SIMULÉE)"
-info "Installation du binaire kubesphere (simulée)…"
-sleep 1
-success "kubesphere installé (simulation)."
+# 5) Initialisation du cluster maître
+log "Initialisation du cluster Kubernetes"
+sudo kubeadm init --kubernetes-version="v${K8S_VERSION}" --pod-network-cidr=10.244.0.0/16 | tee -a "${LOG_FILE}"
 
-echo ""
+log "Configuration kubectl pour l'utilisateur courant"
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-# ─── BLOC TESTS DE VÉRIFICATION ─────────────────────────────────────────────────
-header "VÉRIFICATIONS POST-INSTALLATION"
+# 6) Déploiement du réseau Pod (Flannel)
+log "Déploiement du CNI Flannel"
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
 
-PASS_COUNT=0
-FAIL_COUNT=0
+# 7) Installation de KubeSphere
+log "Installation de KubeSphere ${KUBESPHERE_VERSION}"
+kubectl apply -f https://github.com/kubesphere/kubesphere/releases/download/${KUBESPHERE_VERSION}/kubesphere-installer.yaml
 
-# Test 1 : version minimale de kubectl
-info "Test 1 : vérifier que kubectl ≥ 1.20.0"
-INSTALLED_VER_RAW=$(kubectl version --client --output=jsonpath='{.clientVersion.gitVersion}')
-KUBECTL_VER="${INSTALLED_VER_RAW#v}"
-REQUIRED_VER="1.20.0"
-if dpkg --compare-versions "${KUBECTL_VER}" ge "${REQUIRED_VER}"; then
-  success "kubectl (${KUBECTL_VER}) satisfait la version minimale (${REQUIRED_VER})."
-  ((PASS_COUNT++))
-else
-  error "kubectl (${KUBECTL_VER}) est inférieur à ${REQUIRED_VER}."
-  ((FAIL_COUNT++))
-fi
+log "Vérification du déploiement KubeSphere"
+kubectl wait --for=condition=ready pods -n kubesphere-system --timeout=10m | tee -a "${LOG_FILE}"
 
-# Test 2 : statut du service kubelet
-info "Test 2 : statut du service kubelet"
-if systemctl is-active --quiet kubelet; then
-  success "Service kubelet actif."
-  ((PASS_COUNT++))
-else
-  error "Service kubelet inactif."
-  ((FAIL_COUNT++))
-fi
+log "Installation terminée. Accéder à KubeSphere via http://<MASTER_IP>:30880"
 
-# Test 3 : port Kubernetes standard (6443) ouvert
-info "Test 3 : vérifier que le port 6443 est à l'écoute"
-if ss -tuln | grep -q ":6443"; then
-  success "Port 6443 en écoute."
-  ((PASS_COUNT++))
-else
-  warning "Port 6443 non trouvé ouvert."
-  ((FAIL_COUNT++))
-fi
-
-echo ""
-header "RÉSULTATS DES TESTS"
-info "Tests réussis : ${PASS_COUNT}"
-if [ "${FAIL_COUNT}" -gt 0 ]; then
-  warning "Tests échoués : ${FAIL_COUNT}"
-else
-  success "Aucun test en échec."
-fi
-echo ""
-
-# ─── ENVOI DU LOG ──────────────────────────────────────────────────────────────
-header "ENVOI DU LOG D'INSTALLATION"
-
-ENDPOINT="https://mon-serveur.example.com/upload"
-info "Envoi du log (${LOGFILE}) vers ${ENDPOINT}…"
-
-if curl -X POST \
-       -H "Content-Type: multipart/form-data" \
-       -F "file=@${LOGFILE}" \
-       "${ENDPOINT}" \
-       --silent --show-error; then
-  success "Log envoyé avec succès."
-else
-  error "L'envoi du log a échoué."
-fi
-
-echo ""
-header "FIN DU SCRIPT"
-info "Date/Heure : $(date '+%Y-%m-%d %H:%M:%S')"
-exit 0
+# Fin du script
