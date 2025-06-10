@@ -1,87 +1,77 @@
-# KubeSphere Kickstarter
+\#!/usr/bin/env bash
 
-This repository provides a one-stop script to quickly set up a vanilla Kubernetes cluster (v1.29.13) and install KubeSphere v4.1.3 on Ubuntu.
+# install\_kubesphere.sh
 
-## Repository Structure
+# Installation script for MicroK8s (v1.29.15) and KubeSphere 4.1.3 via Helm (ks-core chart v1.1.4)
 
-- **kubesphere-kickstarter.sh**: Main installation script. Must be run as root.
+set -euo pipefail
 
-## Prerequisites
+# 1. Install MicroK8s using Snap
 
-- Ubuntu 20.04+ or compatible Debian-based distribution
-- Minimum 2 CPU cores, 4 GB RAM
-- Internet connectivity to download packages and manifests
-- Sudo or root privileges
+echo "🔄 Installing MicroK8s (v1.29.15) via Snap..."
+sudo snap install microk8s --classic --channel=1.29/stable
 
-## Supported Versions
+# Add current user to the microk8s group for permissions
 
-- **Kubernetes**: upstream v1.29.13
-- **KubeSphere**: v4.1.3
-- **Network Plugin**: Calico (default). You may replace with Flannel, Weave, etc.
+echo "🔄 Adding current user to 'microk8s' group..."
+sudo usermod -aG microk8s "\$USER"
+echo "   ⚠️ You may need to log out and log back in for group changes to take effect."
 
-## Usage
+# Export MicroK8s kubeconfig to user’s home
 
-1. **Clone the repository**
+echo "🔄 Configuring kubeconfig for MicroK8s..."
+sudo microk8s config > \~/.kube/config
+sudo chown "\$(id -u):\$(id -g)" \~/.kube/config
 
-   ```bash
-   git clone https://github.com/charlesvdd/kubesphere.git
-   cd kubesphere
-   ```
+echo "🔄 Enabling essential MicroK8s addons: DNS, storage, ingress, RBAC..."
+microk8s enable dns storage ingress rbac
 
-2. **Make the script executable**
+# Wait until the Kubernetes node is Ready
 
-   ```bash
-   chmod +x kubesphere-kickstarter.sh
-   ```
+echo "⏳ Waiting for the Kubernetes node to become Ready..."
+until microk8s kubectl get nodes 2>/dev/null | grep -q "Ready"; do
+echo "   ...still waiting"
+sleep 5
+done
+echo "✅ MicroK8s is up and running."
 
-3. **Run the script as root**
+# 2. Install Helm 3 for package management
 
-   ```bash
-   sudo ./kubesphere-kickstarter.sh
-   ```
+echo "🔄 Installing Helm 3..."
+curl -fsSL [https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3](https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3) | bash
+echo "✅ Helm installation complete."
 
-   The script will:
-   - Check for root privileges
-   - Install kubeadm, kubelet, and kubectl v1.29.13
-   - Initialize the control plane with a Calico network (CIDR 192.168.0.0/16)
-   - Deploy KubeSphere v4.1.3
-   - Wait up to 10 minutes for all KubeSphere pods to be ready
+# 3. Deploy KubeSphere using the ks-core Helm chart
 
-4. **Verify installation**
+echo "🔄 Deploying KubeSphere 4.1.3 (ks-core chart v1.1.4)..."
+NAMESPACE="kubesphere-system"
+RELEASE\_NAME="kubesphere"
+CHART\_NAME="ks-core"
+CHART\_VERSION="1.1.4"
 
-   ```bash
-   kubectl get nodes             # Check cluster nodes
-   kubectl get pods -n kubesphere-system  # Check KubeSphere pods
-   kubectl get svc -n kubesphere-system | grep kubesphere-console
-   ```
+# Create namespace if it doesn't exist
 
-5. **Access the KubeSphere Console**
+microk8s kubectl create namespace "\$NAMESPACE" --dry-run=client -o yaml | microk8s kubectl apply -f -
 
-   Forward the service port or expose via LoadBalancer/Ingress:
+# Add and update the KubeSphere Helm repository
 
-   ```bash
-   kubectl port-forward -n kubesphere-system svc/kubesphere-console 30880:80
-   ```
+helm repo add kubesphere [https://charts.kubesphere.io/main](https://charts.kubesphere.io/main)
+helm repo update
 
-   Then open your browser at <http://localhost:30880>.
+# Install the chart and wait for all resources to be ready
 
-## Customization
+helm install "\$RELEASE\_NAME" kubesphere/"\$CHART\_NAME"&#x20;
+\--namespace "\$NAMESPACE"&#x20;
+\--version "\$CHART\_VERSION"&#x20;
+\--wait
 
-- **Change Kubernetes version**: edit the `K8S_VERSION` variable in the script (must stay within v1.21–v1.30).
-- **Use different network plugin**: replace the Calico manifest URL in the script (step 4).
-- **Modify Pod CIDR**: adjust the `POD_NETWORK_CIDR` variable.
+echo "✅ KubeSphere 4.1.3 has been successfully deployed."
 
-## Troubleshooting
+# 4. Expose the KubeSphere console via port-forwarding
 
-- If the script fails to find packages, ensure the Google GPG key and APT repo were added correctly.
-- Check logs of failing pods:
+echo "🔄 Setting up port-forward to access the KubeSphere console..."
+microk8s kubectl -n "\$NAMESPACE" port-forward svc/ks-console 30880:80 &
 
-  ```bash
-  kubectl -n kubesphere-system logs -l app=kubesphere-console
-  ```
-
-- For network issues, verify IP ranges and networking add-on status.
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+echo -e "\n✅ Port-forward established: [http://localhost:30880](http://localhost:30880)"
+echo "   Login with username: admin, password: P\@88w0rd (remember to change it after first login)."
+echo "🎉 Installation complete!"
