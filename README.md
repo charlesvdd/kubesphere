@@ -1,77 +1,83 @@
-\#!/usr/bin/env bash
+# Install Kubernetes & KubeSphere on a Fresh Server
 
-# install\_kubesphere.sh
+This guide provides a simple, all-in-one installation of Kubernetes using **MicroK8s** and **KubeSphere** 4.1.3 via Helm. It bypasses APT repository issues by using the Snap package for Kubernetes and the official Helm chart for KubeSphere.
 
-# Installation script for MicroK8s (v1.29.15) and KubeSphere 4.1.3 via Helm (ks-core chart v1.1.4)
+---
 
-set -euo pipefail
+## Prerequisites
 
-# 1. Install MicroK8s using Snap
+* A fresh Ubuntu-based server (18.04, 20.04, or 22.04)
+* `sudo` privileges
+* Internet access
+* Ports `8080`, `30880` (or custom) available for the KubeSphere console
 
-echo "🔄 Installing MicroK8s (v1.29.15) via Snap..."
-sudo snap install microk8s --classic --channel=1.29/stable
+---
 
-# Add current user to the microk8s group for permissions
+## Components & Versions
 
-echo "🔄 Adding current user to 'microk8s' group..."
-sudo usermod -aG microk8s "\$USER"
-echo "   ⚠️ You may need to log out and log back in for group changes to take effect."
+| Component  | Version    | Install Method                       |
+| ---------- | ---------- | ------------------------------------ |
+| MicroK8s   | 1.29.15    | Snap (`--channel=1.29/stable`)       |
+| Helm CLI   | Latest 3.x | Official install script              |
+| KubeSphere | 4.1.3      | Helm chart `ks-core` (version 1.1.4) |
 
-# Export MicroK8s kubeconfig to user’s home
+---
 
-echo "🔄 Configuring kubeconfig for MicroK8s..."
-sudo microk8s config > \~/.kube/config
-sudo chown "\$(id -u):\$(id -g)" \~/.kube/config
+## Quickstart
 
-echo "🔄 Enabling essential MicroK8s addons: DNS, storage, ingress, RBAC..."
-microk8s enable dns storage ingress rbac
+1. **Clone this repository** and make the install script executable:
 
-# Wait until the Kubernetes node is Ready
+   ```bash
+   git clone https://your-repo-url.git
+   cd your-repo-url
+   chmod +x install_kubesphere.sh
+   ```
 
-echo "⏳ Waiting for the Kubernetes node to become Ready..."
-until microk8s kubectl get nodes 2>/dev/null | grep -q "Ready"; do
-echo "   ...still waiting"
-sleep 5
-done
-echo "✅ MicroK8s is up and running."
+2. **Run the installer**:
 
-# 2. Install Helm 3 for package management
+   ```bash
+   ./install_kubesphere.sh
+   ```
 
-echo "🔄 Installing Helm 3..."
-curl -fsSL [https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3](https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3) | bash
-echo "✅ Helm installation complete."
+3. **Access the KubeSphere console**:
 
-# 3. Deploy KubeSphere using the ks-core Helm chart
+   * Open your browser at `http://localhost:30880`
+   * Login with:
 
-echo "🔄 Deploying KubeSphere 4.1.3 (ks-core chart v1.1.4)..."
-NAMESPACE="kubesphere-system"
-RELEASE\_NAME="kubesphere"
-CHART\_NAME="ks-core"
-CHART\_VERSION="1.1.4"
+     * **Username**: `admin`
+     * **Password**: `P@88w0rd`
+   * Remember to change the default password on first login.
 
-# Create namespace if it doesn't exist
+---
 
-microk8s kubectl create namespace "\$NAMESPACE" --dry-run=client -o yaml | microk8s kubectl apply -f -
+## Script Explanation
 
-# Add and update the KubeSphere Helm repository
+1. **MicroK8s Installation**: Uses a single Snap package to install Kubernetes v1.29.15, including essential addons (DNS, storage, ingress, RBAC).
+2. **Helm Installation**: Installs Helm CLI v3 for package management.
+3. **KubeSphere Deployment**: Adds the `kubesphere` Helm repo and deploys the `ks-core` chart (v1.1.4) in the `kubesphere-system` namespace, waiting until all pods are running.
+4. **Console Access**: Sets up port-forwarding from local port `30880` to the `ks-console` service on the cluster.
 
-helm repo add kubesphere [https://charts.kubesphere.io/main](https://charts.kubesphere.io/main)
-helm repo update
+---
 
-# Install the chart and wait for all resources to be ready
+## Customization
 
-helm install "\$RELEASE\_NAME" kubesphere/"\$CHART\_NAME"&#x20;
-\--namespace "\$NAMESPACE"&#x20;
-\--version "\$CHART\_VERSION"&#x20;
-\--wait
+* **Enable additional MicroK8s addons** by editing the `microk8s enable` line in the script (e.g., `metrics-server`, `dashboard`).
+* **Change ports** by modifying the `port-forward` command.
+* **Chart values**: Pass `--set key=value` flags to `helm install` to customize KubeSphere settings.
 
-echo "✅ KubeSphere 4.1.3 has been successfully deployed."
+---
 
-# 4. Expose the KubeSphere console via port-forwarding
+## Troubleshooting
 
-echo "🔄 Setting up port-forward to access the KubeSphere console..."
-microk8s kubectl -n "\$NAMESPACE" port-forward svc/ks-console 30880:80 &
+* If the node never reaches `Ready`, check `microk8s status --wait-ready` and inspect system resources.
+* For Helm errors, run `helm repo update` and `helm uninstall kubesphere -n kubesphere-system` to retry.
+* Consult the official docs:
 
-echo -e "\n✅ Port-forward established: [http://localhost:30880](http://localhost:30880)"
-echo "   Login with username: admin, password: P\@88w0rd (remember to change it after first login)."
-echo "🎉 Installation complete!"
+  * [MicroK8s Documentation](https://microk8s.io/docs)
+  * [KubeSphere Helm Charts](https://charts.kubesphere.io/main)
+
+---
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
