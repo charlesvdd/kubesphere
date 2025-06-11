@@ -28,8 +28,7 @@ This guide provides a simple, all-in-one installation of Kubernetes using **Micr
 1. **Clone this repository** and make the install script executable:
 
    ```bash
-   git clone https://your-repo-url.git
-   cd your-repo-url
+git clone https://github.com/charlesvdd/kubesphere.git
    chmod +x install_kubesphere.sh
    ```
 
