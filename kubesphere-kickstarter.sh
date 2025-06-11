@@ -4,59 +4,71 @@
 
 set -euo pipefail
 
-# Ensure UNIX line endings (help with CRLF issues)
+# Ensure UNIX line endings (avoid \r issues)
 if command -v dos2unix &>/dev/null; then
-  dos2unix "$0" &>/dev/null || true
+dos2unix "$0" &>/dev/null || true
 fi
 
-# Prompt for project name
-echo -n "Enter a project name (used for installation directory): "
+# Prompt for project directory name
+echo -n "Enter a project name (directory will be '~/kubesphere-<name>'): "
 read -r PROJECT_NAME
-
-# Define installation directory
 INSTALL_DIR="$HOME/kubesphere-$PROJECT_NAME"
-NAMESPACE="kubesphere-system"
-RELEASE_NAME="kubesphere"
-CHART_NAME="ks-core"
-CHART_VERSION="1.1.4"
 
-# Create install directory and navigate into it
-echo "🔄 Setting up project directory at $INSTALL_DIR..."
+# Prompt for KubeSphere instance (release) name
+echo -n "Enter a name for your KubeSphere instance (Helm release name, default 'kubesphere'): "
+read -r RELEASE_NAME_INPUT
+RELEASE_NAME=${RELEASE_NAME_INPUT:-kubesphere}
+
+# Fixed namespace required by Helm chart
+NAMESPACE="kubesphere-system"
+CHART=ks-core
+CHART_VER=1.1.4
+
+# Create and move to install directory
+echo "🔄 Creating install directory: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
+echo "✅ Directory ready."
 
-echo "✅ Project directory ready: $INSTALL_DIR"
-echo "✅ KubeSphere will be installed into namespace: $NAMESPACE"
+echo "Project: $PROJECT_NAME"
+echo "Instance (release) name: $RELEASE_NAME"
+echo "Namespace: $NAMESPACE"
 
-echo "
-1) Installing MicroK8s..."
-# 1. Install MicroK8s
-sudo snap install microk8s --classic --channel=1.29/stable
+# 1) Install MicroK8s if missing
+echo "\n1) Installing MicroK8s v1.29.15..."
+if ! snap list microk8s &>/dev/null; then
+  sudo snap install microk8s --classic --channel=1.29/stable
+else
+  echo "   MicroK8s already installed."
+fi
 
-CURRENT_USER=$(whoami)
-echo "🔄 Adding user '$CURRENT_USER' to 'microk8s' group..."
-sudo usermod -aG microk8s "$CURRENT_USER"
-echo "   ⚠️ Log out and log back in for group changes to apply."
+# Add current user to microk8s group
+USER=$(whoami)
+echo "🔄 Adding $USER to microk8s group..."
+sudo usermod -aG microk8s "$USER"
+echo "   ⚠️ Please run 'newgrp microk8s' or re-login to apply."
 
-echo "🔄 Configuring kubeconfig for MicroK8s..."
+# Configure kubeconfig
+echo "🔄 Configuring kubeconfig..."
 mkdir -p "$HOME/.kube"
 sudo microk8s config > "$HOME/.kube/config"
 sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
 
-echo "🔄 Enabling MicroK8s addons: dns, storage, ingress, rbac..."
-sudo microk8s enable dns storage ingress rbac
+# Enable addons
+echo "🔄 Enabling MicroK8s addons: dns, hostpath-storage, ingress, rbac..."
+sudo microk8s enable dns hostpath-storage ingress rbac
 
-echo "⏳ Waiting for Kubernetes node to become Ready..."
+# Wait for node to be ready
+echo "⏳ Waiting for MicroK8s node Ready..."
 until sudo microk8s kubectl get nodes --no-headers 2>/dev/null | grep -q "Ready"; do
-  echo "   ...still waiting"
   sleep 5
+  echo "   still waiting..."
 done
 
-echo "✅ MicroK8s is up and running."
+echo "✅ MicroK8s is Ready."
 
-echo "
-2) Installing Helm 3..."
-# 2. Install Helm
+# 2) Install Helm
+echo "\n2) Installing Helm 3..."
 if ! command -v helm &>/dev/null; then
   curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 else
@@ -65,28 +77,35 @@ fi
 
 echo "✅ Helm is ready."
 
-echo "
-3) Deploying KubeSphere..."
-# 3. Deploy KubeSphere
+# 3) Deploy KubeSphere via Helm
+echo "\n3) Deploying KubeSphere $CHART_VER as release '$RELEASE_NAME' into namespace $NAMESPACE..."
 helm repo add kubesphere https://charts.kubesphere.io/main
 helm repo update
 
-# Create fixed namespace
-sudo microk8s kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | sudo microk8s kubectl apply -f -
+microk8s kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | microk8s kubectl apply -f -
 
-helm install "$RELEASE_NAME" kubesphere/$CHART_NAME \
+helm install "$RELEASE_NAME" kubesphere/$CHART \
   --namespace "$NAMESPACE" \
-  --version "$CHART_VERSION" \
+  --version "$CHART_VER" \
   --wait
 
-echo "✅ KubeSphere deployed into namespace '$NAMESPACE'."
+echo "✅ Helm release '$RELEASE_NAME' installed in namespace '$NAMESPACE'."
 
-echo "
-4) Exposing KubeSphere console..."
-# 4. Expose console
-sudo microk8s kubectl -n "$NAMESPACE" port-forward svc/ks-console 30880:80 &
+echo "Waiting for all pods to be Running..."
+until [ "$(microk8s kubectl get pods -n "$NAMESPACE" --no-headers | awk '{print $3}' | grep -cv Running)" -eq 0 ]; do
+  sleep 5
+  echo "   Waiting for pods..."
+done
 
+echo "✅ All KubeSphere pods are Running."
+
+# 4) Expose console
+echo "\n4) Setting up port-forward for KubeSphere console..."
+microk8s kubectl -n "$NAMESPACE" port-forward svc/ks-console 30880:80 &
+echo "✅ Port-forward established."
+
+# 5) Display access details
 echo -e "\n🎉 Installation complete!"
-echo "Access: http://localhost:30880"
-echo "Username: admin"
-echo "Password: P@88w0rd (change after first login)"
+echo "Access the console at: http://localhost:30880" 
+echo "If remote, replace 'localhost' with your server IP or hostname."
+echo -e "Login credentials:\n  Username: admin\n  Password: P@88w0rd\n(please change after first login)"
