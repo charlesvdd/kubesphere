@@ -25,21 +25,26 @@ This guide provides a simple, all-in-one installation of Kubernetes using MicroK
 
 ### Quickstart
 
-1. **Clone this repository and make the install script executable**:
+1. **Clone this repository** (or pull the correct branch if it already exists):
 
    ```bash
-   git clone https://github.com/charlesvdd/kubesphere.git
+   git clone https://github.com/charlesvdd/kubesphere.git || cd kubesphere && git pull origin master
+   ```
+
+2. **Enter the directory and make the install script executable**:
+
+   ```bash
    cd kubesphere
    chmod +x kubesphere-kickstarter.sh
    ```
 
-2. **Run the installer**:
+3. **Run the installer** (use Bash to ensure the correct interpreter):
 
    ```bash
-   ./kubesphere-kickstarter.sh
+   bash kubesphere-kickstarter.sh
    ```
 
-3. **Access the KubeSphere console**:
+4. **Access the KubeSphere console**:
 
    * Open your browser at `http://<server-ip>:30880`
    * Login with:
