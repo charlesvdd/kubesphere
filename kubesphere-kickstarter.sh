@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # install_kubesphere.sh
-# Installation script for MicroK8s (v1.29.15) and KubeSphere 4.1.3 via Helm (ks-core chart v1.1.4)
+# Installation script for MicroK8s (v1.28.0) and KubeSphere 4.1.3 via Helm (ks-core chart v1.1.4)
 
 set -euo pipefail
 
 # Ensure UNIX line endings (avoid \r issues)
 if command -v dos2unix &>/dev/null; then
-dos2unix "$0" &>/dev/null || true
+    dos2unix "$0" &>/dev/null || true
 fi
 
 # Prompt for project directory name
@@ -35,11 +35,11 @@ echo "Instance (release) name: $RELEASE_NAME"
 echo "Namespace: $NAMESPACE"
 
 # 1) Install MicroK8s if missing
-echo "\n1) Installing MicroK8s v1.29.15..."
+echo "\n1) Installing MicroK8s v1.28.0..."
 if ! snap list microk8s &>/dev/null; then
-  sudo snap install microk8s --classic --channel=1.29/stable
+    sudo snap install microk8s --classic --channel=1.28/stable
 else
-  echo "   MicroK8s already installed."
+    echo "   MicroK8s already installed."
 fi
 
 # Add current user to microk8s group
@@ -61,8 +61,8 @@ sudo microk8s enable dns hostpath-storage ingress rbac
 # Wait for node to be ready
 echo "⏳ Waiting for MicroK8s node Ready..."
 until sudo microk8s kubectl get nodes --no-headers 2>/dev/null | grep -q "Ready"; do
-  sleep 5
-  echo "   still waiting..."
+    sleep 5
+    echo "   still waiting..."
 done
 
 echo "✅ MicroK8s is Ready."
@@ -70,9 +70,9 @@ echo "✅ MicroK8s is Ready."
 # 2) Install Helm
 echo "\n2) Installing Helm 3..."
 if ! command -v helm &>/dev/null; then
-  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 else
-  echo "   Helm already installed: $(helm version --short)"
+    echo "   Helm already installed: $(helm version --short)"
 fi
 
 echo "✅ Helm is ready."
@@ -93,8 +93,8 @@ echo "✅ Helm release '$RELEASE_NAME' installed in namespace '$NAMESPACE'."
 
 echo "Waiting for all pods to be Running..."
 until [ "$(microk8s kubectl get pods -n "$NAMESPACE" --no-headers | awk '{print $3}' | grep -cv Running)" -eq 0 ]; do
-  sleep 5
-  echo "   Waiting for pods..."
+    sleep 5
+    echo "   Waiting for pods..."
 done
 
 echo "✅ All KubeSphere pods are Running."
