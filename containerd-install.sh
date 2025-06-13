@@ -1,76 +1,79 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
 
-LOG_FILE="logs/install.log"
-mkdir -p logs
+set -euo pipefail
 
-### Vérifier si root
-if [[ "$EUID" -ne 0 ]]; then
-  echo "❌ Ce script doit être exécuté en root." | tee -a "$LOG_FILE"
-  exit 1
-fi
+# ───────────────────────────────
+# CONFIGURATION
+# ───────────────────────────────
+K8S_VERSION="1.28.0-00"
+KUBESPHERE_VERSION="v4.1.3"
+INSTALL_DIR="/opt/k8s"
+KUBESPHERE_DIR="/opt/kubesphere"
 
-log() {
-  echo -e "\n🛠️  $1" | tee -a "$LOG_FILE"
-}
+echo "[+] Starting Kubernetes $K8S_VERSION & KubeSphere $KUBESPHERE_VERSION install..."
 
-log "1. Préparation de l’environnement"
-apt-get update && apt-get install -y \
-  apt-transport-https curl gnupg lsb-release ca-certificates software-properties-common | tee -a "$LOG_FILE"
-
-log "2. Installation de containerd"
-mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
-
-apt-get update
-apt-get install -y containerd.io | tee -a "$LOG_FILE"
-
-log "3. Configuration de containerd avec cgroup=systemd"
-mkdir -p /etc/containerd
-containerd config default > /etc/containerd/config.toml
-sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-systemctl restart containerd && systemctl enable containerd
-
-log "4. Désactivation du swap & configuration sysctl"
+# ───────────────────────────────
+# PRÉREQUIS SYSTÈME
+# ───────────────────────────────
+echo "[+] Disabling swap & updating system"
 swapoff -a
 sed -i '/ swap / s/^/#/' /etc/fstab
-cat <<EOF > /etc/sysctl.d/kubernetes.conf
-net.bridge.bridge-nf-call-iptables  = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward                 = 1
-EOF
-sysctl --system | tee -a "$LOG_FILE"
+apt-get update && apt-get upgrade -y
 
-log "5. Installation de kubeadm, kubelet, kubectl (v1.28.0)"
-# Ajout propre de la clé
-curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /etc/apt/keyrings/kubernetes.gpg
+echo "[+] Installing required packages"
+apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release socat conntrack
 
-# Détection du nom de version Ubuntu
-. /etc/os-release
-CODENAME=$VERSION_CODENAME
+# ───────────────────────────────
+# INSTALLATION DE CONTAINERD
+# ───────────────────────────────
+echo "[+] Installing containerd"
+apt install -y containerd
+mkdir -p /etc/containerd
+containerd config default | tee /etc/containerd/config.toml
+systemctl restart containerd
+systemctl enable containerd
 
-echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-${CODENAME} main" > /etc/apt/sources.list.d/kubernetes.list
+# ───────────────────────────────
+# INSTALLATION DE KUBERNETES
+# ───────────────────────────────
+echo "[+] Adding Kubernetes repo"
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] \
+https://apt.kubernetes.io/ kubernetes-xenial main" | tee /etc/apt/sources.list.d/kubernetes.list
 
 apt-get update
-apt-get install -y kubelet=1.28.0-00 kubeadm=1.28.0-00 kubectl=1.28.0-00
+apt-get install -y kubelet=$K8S_VERSION kubeadm=$K8S_VERSION kubectl=$K8S_VERSION
 apt-mark hold kubelet kubeadm kubectl
 
-log "6. Initialisation du cluster Kubernetes"
-# ⚠️ Compatible avec KubeSphere 4.1 uniquement jusqu'à Kubernetes v1.28.x
-kubeadm init \
-  --kubernetes-version=1.28.0 \
-  --pod-network-cidr=10.244.0.0/16 \
-  --cri-socket=unix:///run/containerd/containerd.sock | tee -a "$LOG_FILE"
+# ───────────────────────────────
+# INITIALISATION DU CLUSTER
+# ───────────────────────────────
+echo "[+] Initializing Kubernetes cluster"
+kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=$K8S_VERSION
 
-log "7. Configuration kubectl pour root"
+echo "[+] Configuring kubectl for root"
 mkdir -p $HOME/.kube
 cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 chown $(id -u):$(id -g) $HOME/.kube/config
 
-log "8. Installation du plugin réseau Flannel"
-kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml | tee -a "$LOG_FILE"
+# ───────────────────────────────
+# INSTALLATION RÉSEAU (flannel)
+# ───────────────────────────────
+echo "[+] Installing Flannel network plugin"
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
 
-echo -e "\n✅ Installation terminée. Utilisez 'kubectl get pods -A' pour vérifier le cluster." | tee -a "$LOG_FILE"
+# ───────────────────────────────
+# INSTALLATION DE KUBESPHERE
+# ───────────────────────────────
+echo "[+] Downloading KubeSphere installer"
+mkdir -p $KUBESPHERE_DIR
+cd $KUBESPHERE_DIR
+curl -LO https://github.com/kubesphere/ks-installer/releases/download/$KUBESPHERE_VERSION/kubesphere-installer.yaml
+curl -LO https://github.com/kubesphere/ks-installer/releases/download/$KUBESPHERE_VERSION/cluster-configuration.yaml
+
+echo "[+] Installing KubeSphere..."
+kubectl apply -f kubesphere-installer.yaml
+kubectl apply -f cluster-configuration.yaml
+
+echo "[✔] Installation complete. It may take 10–15 minutes for all pods to become ready."
+kubectl get pod -n kubesphere-system -w
