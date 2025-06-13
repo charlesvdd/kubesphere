@@ -1,35 +1,19 @@
-# 🌐 KubeSphere Kubernetes Setup (Branch: containerd)
+# 🚀 Kubernetes + KubeSphere Auto Setup
 
-> Installation de Kubernetes 1.28.0 avec containerd (runtime officiel) + Kubeadm.
+This setup script installs:
+- Kubernetes v1.28.0 via kubeadm
+- containerd as container runtime
+- KubeSphere v4.1.3 with default configuration
 
-## ✅ Ce que fait ce script
+## 🧰 Prerequisites
 
-- Installe `containerd` (runtime recommandé)
-- Installe `kubeadm`, `kubelet`, `kubectl`
-- Initialise un cluster Kubernetes en standalone
-- Configure `Flannel` comme CNI
-- Génère des logs dans `logs/install.log`
+- OS: Ubuntu 20.04 or 22.04
+- Memory: 8GB minimum
+- CPU: 2 vCPU+
+- Disk: 50GB+
 
-## ⚙️ Prérequis
-
-- Un VPS avec Ubuntu 20.04 ou 22.04
-- Accès root
-- 4+ vCPU, 8+ Go RAM conseillés
-
-  ## 🔁 Compatibilité
-
-Ce script installe **Kubernetes 1.28.0**, qui est la dernière version **compatible avec KubeSphere v4.1** (au 13 juin 2025).  
-👉 Ne mettez pas à jour vers Kubernetes 1.29 tant que KubeSphere ne l'indique pas officiellement comme compatible.
-
-## 🚀 Usage
+## 📦 Usage
 
 ```bash
-cd /root/containerd
-
-# Téléchargement depuis GitHub avec le bon nom
-curl -O https://raw.githubusercontent.com/charlesvdd/kubesphere/containerd/containerd-install.sh
-
-# Donne les droits et lance
-chmod +x containerd-install.sh
-./containerd-install.sh
-
+chmod +x install_k8s_kubesphere.sh
+sudo ./install_k8s_kubesphere.sh
