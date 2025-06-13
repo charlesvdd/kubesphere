@@ -15,7 +15,8 @@ log() {
 }
 
 log "1. Préparation de l’environnement"
-apt-get update && apt-get install -y apt-transport-https curl gnupg lsb-release ca-certificates software-properties-common | tee -a "$LOG_FILE"
+apt-get update && apt-get install -y \
+  apt-transport-https curl gnupg lsb-release ca-certificates software-properties-common | tee -a "$LOG_FILE"
 
 log "2. Installation de containerd"
 mkdir -p /etc/apt/keyrings
@@ -44,14 +45,21 @@ EOF
 sysctl --system | tee -a "$LOG_FILE"
 
 log "5. Installation de kubeadm, kubelet, kubectl (v1.28.0)"
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - | tee -a "$LOG_FILE"
-echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list
+# Ajout propre de la clé
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /etc/apt/keyrings/kubernetes.gpg
+
+# Détection du nom de version Ubuntu
+. /etc/os-release
+CODENAME=$VERSION_CODENAME
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-${CODENAME} main" > /etc/apt/sources.list.d/kubernetes.list
 
 apt-get update
 apt-get install -y kubelet=1.28.0-00 kubeadm=1.28.0-00 kubectl=1.28.0-00
 apt-mark hold kubelet kubeadm kubectl
 
 log "6. Initialisation du cluster Kubernetes"
+# ⚠️ Compatible avec KubeSphere 4.1 uniquement jusqu'à Kubernetes v1.28.x
 kubeadm init \
   --kubernetes-version=1.28.0 \
   --pod-network-cidr=10.244.0.0/16 \
