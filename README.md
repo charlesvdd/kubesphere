@@ -19,7 +19,11 @@
 ## 🚀 Usage
 
 ```bash
-git clone https://github.com/charlesvdd/kubesphere.git
-cd kubesphere/containerd
-chmod +x install-kubernetes.sh
-sudo ./install-kubernetes.sh
+cd /root/containerd
+
+# Téléchargement depuis GitHub avec le bon nom
+curl -O https://raw.githubusercontent.com/charlesvdd/kubesphere/containerd/containerd-install.sh
+
+# Donne les droits et lance
+chmod +x containerd-install.sh
+./containerd-install.sh
