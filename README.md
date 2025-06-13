@@ -27,3 +27,9 @@ curl -O https://raw.githubusercontent.com/charlesvdd/kubesphere/containerd/conta
 # Donne les droits et lance
 chmod +x containerd-install.sh
 ./containerd-install.sh
+
+
+## 🔁 Compatibilité
+
+Ce script installe **Kubernetes 1.28.0**, qui est la dernière version **compatible avec KubeSphere v4.1** (au 13 juin 2025).  
+👉 Ne mettez pas à jour vers Kubernetes 1.29 tant que KubeSphere ne l'indique pas officiellement comme compatible.
