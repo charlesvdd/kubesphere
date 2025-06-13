@@ -27,7 +27,7 @@ curl -O https://raw.githubusercontent.com/charlesvdd/kubesphere/containerd/conta
 # Donne les droits et lance
 chmod +x containerd-install.sh
 ./containerd-install.sh
-
+'''
 
 ## 🔁 Compatibilité
 
