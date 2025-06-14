@@ -1,98 +1,44 @@
-## Install Kubernetes & KubeSphere on a Fresh Server
+# 🚀 Installation Kubernetes 1.28.0 avec Containerd (préparation pour KubeSphere 4.x)
 
-This guide provides a simple, all-in-one installation of Kubernetes using MicroK8s and KubeSphere 4.1.3 via Helm. It bypasses APT repository issues by using the Snap package for Kubernetes and the official Helm chart for KubeSphere.
+Ce script permet d’installer un cluster **Kubernetes 1.28.0** sur **Ubuntu 22.04 LTS**, avec `containerd` comme runtime et une configuration prête à recevoir **KubeSphere v4.1.3** (via Helm).
 
----
-
-### Prerequisites
-
-* A fresh Ubuntu-based server (18.04, 20.04, or 22.04)
-* **sudo** privileges
-* Internet access
-* Ports **8080**, **30880** (or custom) available for the KubeSphere console
+> 🔧 Branche : `Kubernetes/conteneraid/1.28.0`  
+> 📄 Script principal : `setup-kubesphere.sh`
 
 ---
 
-### Components & Versions
+## 📋 Prérequis
 
-| Component  | Version    | Install Method                       |
-| ---------- | ---------- | ------------------------------------ |
-| MicroK8s   | 1.29.15    | Snap (`--channel=1.29/stable`)       |
-| Helm CLI   | Latest 3.x | Official install script              |
-| KubeSphere | 4.1.3      | Helm chart `ks-core` (version 1.1.4) |
-
----
-
-📦 À exécuter :
-Colle le script dans un fichier :
-
-bash
-Copier
-Modifier
-nano setup-kubesphere.sh
-Donne les droits d’exécution :
-
-bash
-Copier
-Modifier
-chmod +x setup-kubesphere.sh
-Lance-le :
-
-bash
-Copier
-Modifier
-./setup-kubesphere.sh
-
-
-3. **Run the installer** (use Bash to ensure the correct interpreter):
-
-   ```bash
-   bash kubesphere-kickstarter.sh
-   ```
-
-4. **Access the KubeSphere console**:
-
-   * Open your browser at `http://<server-ip>:30880`
-   * Login with:
-
-     ```text
-     Username: admin
-     Password: P@88w0rd
-     ```
-   * **Tip:** Change the default password on first login.
+- ✅ Ubuntu Server 22.04 LTS (recommandé sur un VPS avec **4 CPU / 8 Go RAM** minimum)
+- ✅ Accès root (`sudo` autorisé)
+- ✅ Port 6443 (K8s), 10250, 30000-32767 ouverts
+- ✅ Connexion Internet active
 
 ---
 
-### Script Explanation
+## 📦 Contenu du script
 
-* **MicroK8s Installation**: Uses a single Snap package to install Kubernetes v1.29.15, including essential addons (DNS, storage, ingress, RBAC).
-* **Helm Installation**: Installs Helm CLI v3 for package management.
-* **KubeSphere Deployment**: Adds the KubeSphere Helm repo and deploys the `ks-core` chart (v1.1.4) in the `kubesphere-system` namespace, waiting until all pods are running.
-* **Console Access**: Sets up port-forwarding from local port 30880 to the `ks-console` service on the cluster.
+Le script installe et configure automatiquement :
 
----
+| Composant     | Version         | Description                          |
+|---------------|-----------------|--------------------------------------|
+| Kubernetes    | `1.28.0`        | Version stable recommandée           |
+| containerd    | latest (via apt)| Runtime léger pour K8s               |
+| kubeadm       | `1.28.0-00`     | Outil d'initialisation du cluster    |
+| kubectl       | `1.28.0-00`     | CLI pour Kubernetes                  |
+| kubelet       | `1.28.0-00`     | Agent sur chaque nœud                |
+| CNI Flannel   | latest          | Réseau Pod (`10.244.0.0/16`)         |
 
-### Customization
-
-* **Additional MicroK8s addons**: Enable more addons by editing the `microk8s enable` line in the script (e.g., `metrics-server`, `dashboard`).
-* **Ports**: Change ports by modifying the port-forward command in the script.
-* **Chart values**: Pass `--set key=value` flags to `helm install` to customize KubeSphere settings.
-
----
-
-### Troubleshooting
-
-* **Node not Ready**: Check `microk8s status --wait-ready` and inspect system resources.
-* **Helm errors**: Run `helm repo update` and `helm uninstall kubesphere -n kubesphere-system` to retry.
-* **DNS issues**: Verify network/DNS settings if `Could not resolve host` appears.
-
-**Useful links**:
-
-* [MicroK8s Documentation](https://microk8s.io/docs)
-* [KubeSphere Helm Charts](https://github.com/kubesphere/helm-charts)
+⚙️ Auto-évaluation intégrée pour chaque étape avec codes couleur :
+- 🟢 OK : étape réussie
+- 🔴 ERREUR : arrêt immédiat avec log
 
 ---
 
-### License
+## ▶️ Exécution
 
-This project is licensed under the MIT License. See `LICENSE` for details.
+### 1. Cloner la branche
+
+```bash
+git clone -b Kubernetes/conteneraid/1.28.0 https://github.com/charlesvdd/kubesphere.git
+cd kubesphere
