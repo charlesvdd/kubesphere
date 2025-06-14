@@ -42,3 +42,15 @@ Le script installe et configure automatiquement :
 ```bash
 git clone -b Kubernetes/conteneraid/1.28.0 https://github.com/charlesvdd/kubesphere.git
 cd kubesphere
+
+2. Rendre le script exécutable
+bash
+Copier
+Modifier
+chmod +x setup-kubesphere.sh
+3. Lancer le script
+bash
+Copier
+Modifier
+sudo ./setup-kubesphere.sh
+🕒 L’installation prend 3 à 6 minutes.
