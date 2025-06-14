@@ -1,33 +1,26 @@
-# 🚀 Installation Kubernetes 1.28 avec containerd (prêt pour KubeSphere 4.x)
+🚀 Kubernetes 1.28 Installation with containerd (Ready for KubeSphere 4.x)
+This repository contains an automated script to install Kubernetes v1.28.0 on Ubuntu 22.04 LTS, using containerd as the runtime, with all best practices to prepare for the installation of KubeSphere 4.1.3 via Helm.
 
-Ce dépôt contient un script automatisé pour installer **Kubernetes v1.28.0** sur **Ubuntu 22.04 LTS**, en utilisant **containerd** comme runtime, avec toutes les bonnes pratiques pour préparer l'installation de **KubeSphere 4.1.3** via Helm.
-
----
-
-## 📄 Fichier principal
-
-- `setup-kubesphere.sh` → installe Kubernetes, configure containerd, installe Flannel et prépare le cluster
-
----
-
-## ✅ Ce que fait le script
-
-| Étape                         | Détails                                                                 |
-|------------------------------|-------------------------------------------------------------------------|
-| ✅ Vérifie l'exécution en root | Refuse de s'exécuter en tant qu'utilisateur non root                   |
-| ✅ Installe containerd        | Avec configuration `SystemdCgroup = true`                              |
-| ✅ Configure Kubernetes       | Dépôt officiel v1.28 + kubeadm, kubelet, kubectl en version figée      |
-| ✅ Initialise le cluster      | Via `kubeadm init` avec pod CIDR `10.244.0.0/16` pour compatibilité CNI |
-| ✅ Installe CNI Flannel       | Compatible avec le pod CIDR utilisé                                    |
-| ✅ Configure `kubectl`        | Copie automatique du `kubeconfig` pour l'utilisateur                   |
-| ✅ Vérifie l’état du nœud     | Boucle jusqu’à ce que le nœud soit `Ready`                             |
-
----
-
-## ▶️ Lancer l'installation
-
-### 1. Cloner la branche
-
-```bash
+📄 Main File
+setup-kubesphere.sh → Installs Kubernetes, configures containerd, installs Flannel, and prepares the cluster.
+✅ What the Script Does
+Step	Details
+✅ Checks for root execution	Refuses to run as a non-root user
+✅ Installs containerd	With SystemdCgroup = true configuration
+✅ Configures Kubernetes	Official v1.28 repository + kubeadm, kubelet, kubectl in fixed version
+✅ Initializes the cluster	Via kubeadm init with pod CIDR 10.244.0.0/16 for CNI compatibility
+✅ Installs Flannel CNI	Compatible with the used pod CIDR
+✅ Configures kubectl	Automatic copy of kubeconfig for the user
+✅ Checks node status	Loops until the node is Ready
+▶️ Launch the Installation
+1. Clone the Branch
+Copier
 git clone -b Kubernetes/conteneraid/1.28.0 https://github.com/charlesvdd/kubesphere.git
 cd kubesphere
+2. Make the Script Executable
+Copier
+chmod +x setup-kubesphere.sh
+3. Run the Script
+Copier
+./setup-kubesphere.sh
+This version includes instructions on how to make the script executable and run it locally.
